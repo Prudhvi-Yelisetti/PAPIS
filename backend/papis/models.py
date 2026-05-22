@@ -58,6 +58,7 @@ class Package(Base):
     # JSON-serialised dep list stored as Text; parse in application layer
     depends_on      = Column(Text, nullable=True)   # JSON array of package names
     required_by     = Column(Text, nullable=True)   # JSON array of package names
+    uv_mode         = Column(String, nullable=True)   # "tool" | "pip" | "add" | null
     is_orphan       = Column(Boolean, default=False)
     last_used_at    = Column(DateTime, nullable=True)
     in_inbox        = Column(Boolean, default=True)  # unassigned until mapped

@@ -27,6 +27,7 @@ export interface Package {
   name: string;
   version: string;
   source: string;
+  uv_mode: "tool" | "pip" | "add" | null;   // ← new
   install_type: string;
   install_date: string | null;
   size_bytes: number | null;
@@ -172,4 +173,15 @@ export function sourceColor(source: string): string {
     conda  : "#44A833",
   };
   return map[source] ?? "#888";
+}
+
+/** Returns a human-readable label for a package's source + uv_mode combo. */
+export function sourceLabel(pkg: Package): string {
+  if (pkg.source !== "uv") return pkg.source;
+  const labels: Record<string, string> = {
+    tool: "uv tool",
+    pip : "uv pip",
+    add : "uv add",
+  };
+  return labels[pkg.uv_mode ?? ""] ?? "uv";
 }

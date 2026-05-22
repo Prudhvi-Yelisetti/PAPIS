@@ -106,17 +106,39 @@ class PapisDaemon:
 
     async def _process_event(self, msg: dict):
         log.info("hook event: %s", msg)
+        ev_type  = msg.get("type", "")
+        pkg_name = msg.get("package", "?")
+        uv_mode  = msg.get("uv_mode", "")   # "tool" | "pip" | "add" | ""
+
         await self._notify_api(msg)
-        if msg.get("type") == "install":
+
+        if ev_type == "install":
+            mode_label = f" ({uv_mode})" if uv_mode else ""
             self._desktop_notify(
-                f"Package installed: {msg.get('package', '?')}",
+                f"Package installed: {pkg_name}{mode_label}",
                 "PAPIS: assign it to a project in the dashboard.",
             )
-        elif msg.get("type") == "duplicate":
+        elif ev_type == "remove":
             self._desktop_notify(
-                f"Already installed: {msg.get('package', '?')}",
+                f"Package removed: {pkg_name}",
+                "PAPIS: package has been untracked.",
+            )
+        elif ev_type == "duplicate":
+            self._desktop_notify(
+                f"Already installed: {pkg_name}",
                 "PAPIS: this package is already tracked. Check your projects.",
             )
+        elif ev_type == "uv_sync":
+            log.info("uv sync detected — triggering full package sync")
+            try:
+                r = await self._http.post("/api/packages/sync")
+                data = r.json()
+                self._desktop_notify(
+                    "uv sync complete",
+                    f"PAPIS: {data.get('added', 0)} new, {data.get('updated', 0)} updated packages.",
+                )
+            except Exception as e:
+                log.warning("sync after uv sync failed: %s", e)
 
     async def _notify_api(self, payload: dict):
         try:
