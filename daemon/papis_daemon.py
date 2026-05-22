@@ -22,6 +22,8 @@ import httpx
 import inotify_simple    # pip install inotify-simple
 import notify2           # pip install notify2
 
+from watchers.docker_watcher import DockerWatcher
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [papis-daemon] %(levelname)s %(message)s",
@@ -41,6 +43,7 @@ class PapisDaemon:
     def __init__(self):
         self._running = True
         self._http = httpx.AsyncClient(base_url=API_BASE, timeout=5)
+        self._docker = DockerWatcher(api_base=API_BASE)
         notify2.init("PAPIS")
 
     async def start(self):
@@ -48,10 +51,12 @@ class PapisDaemon:
         await asyncio.gather(
             self._unix_socket_listener(),
             self._inotify_watcher(),
+            self._docker.watch(),          # ← Docker event stream
         )
 
     async def stop(self):
         self._running = False
+        await self._docker.stop()
         await self._http.aclose()
 
     # ── Unix socket: receives messages from pacman hooks ──────────────────────

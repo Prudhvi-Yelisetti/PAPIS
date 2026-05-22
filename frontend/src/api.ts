@@ -1,4 +1,5 @@
-const BASE = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8765";
+// frontend/src/api.ts
+const BASE = "http://127.0.0.1:8765";
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -142,6 +143,50 @@ export const exportsApi = {
 };
 
 
+// ── Duplicate check API ───────────────────────────────────────────────────────
+
+export interface ProjectRef {
+  id: number;
+  name: string;
+  directory: string | null;
+}
+
+export interface CheckResult {
+  found: boolean;
+  package_id: number | null;
+  name: string;
+  version: string | null;
+  source: string | null;
+  install_type: string | null;
+  in_inbox: boolean;
+  projects: ProjectRef[];
+  suggestion: string;
+}
+
+export interface BatchCheckResult {
+  results: CheckResult[];
+  duplicate_count: number;
+  new_count: number;
+}
+
+export const duplicatesApi = {
+  check: (name: string, source?: string) => {
+    const qs = new URLSearchParams({ name });
+    if (source) qs.set("source", source);
+    return get<CheckResult>(`/api/packages/check?${qs}`);
+  },
+  checkMany: (items: { name: string; source?: string }[]) =>
+    post<BatchCheckResult>("/api/packages/check-many", items),
+  logDuplicate: (body: {
+    name: string;
+    source: string;
+    attempted_version?: string;
+    resolved_action: string;
+    target_project_id?: number;
+  }) => post<void>("/api/packages/duplicate", body),
+};
+
+
 // ── Scan API ──────────────────────────────────────────────────────────────────
 
 export const scanApi = {
@@ -170,6 +215,7 @@ export function sourceColor(source: string): string {
     flatpak: "#4A86CF",
     uv     : "#DE5F32",
     docker : "#2496ED",
+    podman : "#892CA0",   // ← Podman purple
     conda  : "#44A833",
   };
   return map[source] ?? "#888";
@@ -177,11 +223,23 @@ export function sourceColor(source: string): string {
 
 /** Returns a human-readable label for a package's source + uv_mode combo. */
 export function sourceLabel(pkg: Package): string {
-  if (pkg.source !== "uv") return pkg.source;
-  const labels: Record<string, string> = {
-    tool: "uv tool",
-    pip : "uv pip",
-    add : "uv add",
-  };
-  return labels[pkg.uv_mode ?? ""] ?? "uv";
+  if (pkg.source === "uv") {
+    const labels: Record<string, string> = {
+      tool: "uv tool",
+      pip : "uv pip",
+      add : "uv add",
+    };
+    return labels[pkg.uv_mode ?? ""] ?? "uv";
+  }
+  if (pkg.source === "cargo") {
+    // Distinguish global tool vs project dep from the description prefix
+    if (pkg.description?.includes("global tool")) return "cargo (global)";
+    if (pkg.description?.includes("project:"))    return "cargo (project)";
+    return "cargo";
+  }
+  if (pkg.source === "docker" || pkg.source === "podman") {
+    if (pkg.install_type === "dependency") return `${pkg.source} (container)`;
+    return `${pkg.source} (image)`;
+  }
+  return pkg.source;
 }

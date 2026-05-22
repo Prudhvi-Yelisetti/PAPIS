@@ -1,14 +1,18 @@
 from .pacman   import PacmanCollector
 from .pip      import PipCollector
-from .uv       import UvCollector          # ← new
+from .uv       import UvCollector
 from .npm      import NpmCollector
+from .cargo    import CargoCollector       # ← new
+from .docker   import DockerCollector      # ← new
 from .flatpak  import FlatpakCollector
 from .base     import BaseCollector, PackageInfo
 
 ALL_COLLECTORS: list[BaseCollector] = [
     PacmanCollector(),
-    UvCollector(),          # before pip so uv-managed pkgs get source=uv
-    PipCollector(),         # pip collector runs after; won't re-insert duplicates
+    UvCollector(),          # before pip — uv entries win over pip
+    PipCollector(),
+    CargoCollector(),       # global tools + per-project lockfiles
+    DockerCollector(),      # images + containers (docker or podman)
     NpmCollector(),
     FlatpakCollector(),
 ]
