@@ -1,0 +1,11 @@
+PACMAN_HOOK_SCRIPT = """#!/bin/bash
+# Called by pacman after every install/remove/upgrade.
+# Reads stdin for the list of affected packages (pacman hook convention).
+SOCK="/run/user/$(id -u)/papis.sock"
+PACKAGES=$(cat)   # newline-separated list from pacman
+
+if [[ -S "$SOCK" ]]; then
+    echo '{"type":"pacman_transaction","packages":'"$(echo "$PACKAGES" | jq -R . | jq -s .)"'}' \
+        | socat - UNIX-CONNECT:"$SOCK"
+fi
+"""

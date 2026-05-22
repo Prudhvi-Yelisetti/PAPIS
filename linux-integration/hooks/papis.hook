@@ -1,0 +1,13 @@
+PACMAN_HOOK = """
+[Trigger]
+Operation = Install
+Operation = Remove
+Operation = Upgrade
+Type = Package
+Target = *
+
+[Action]
+Description = Notifying PAPIS of package change...
+When = PostTransaction
+Exec = /usr/local/bin/papis-pacman-hook
+"""
