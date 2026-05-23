@@ -1,4 +1,3 @@
-// frontend/src/api.ts
 const BASE = "http://127.0.0.1:8765";
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {

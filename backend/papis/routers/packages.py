@@ -67,99 +67,37 @@ def get_package(pkg_id: int, db: Session = Depends(get_db)):
 
 @router.post("/sync")
 def sync_packages(db: Session = Depends(get_db)):
-    """
-    Re-scan all package managers and upsert into DB.
-
-    Priority rules:
-      - uv  > pip  (uv entries preserve richer metadata)
-      - If a package already exists with source=uv, a pip collector hit
-        for the same name will NOT overwrite it.
-    """
-    from ..collectors.registry import collect_all
-    from ..models import InstallSource
-
-    # Source priority: lower number wins when two collectors see the same pkg name
-    SOURCE_PRIORITY: dict[str, int] = {
-        InstallSource.uv     : 0,
-        InstallSource.pacman : 1,
-        InstallSource.aur    : 1,
-        InstallSource.cargo  : 2,
-        InstallSource.npm    : 2,
-        InstallSource.pip    : 3,   # pip is lowest — uv supersedes it
-        InstallSource.flatpak: 4,
-        InstallSource.conda  : 5,
-        InstallSource.unknown: 99,
-    }
-
+    """Re-scan all package managers and upsert into DB."""
     collected = collect_all()
-    added = updated = skipped = 0
-
+    added = updated = 0
     for info in collected:
-        # Look for existing record by name + source (exact match)
-        existing = (
-            db.query(Package)
-            .filter_by(name=info.name, source=info.source)
-            .first()
-        )
-
+        existing = db.query(Package).filter_by(name=info.name, source=info.source).first()
         if existing:
-            # Update mutable fields; preserve project associations
-            existing.version      = info.version
-            existing.install_type = info.install_type
-            existing.size_bytes   = info.size_bytes or existing.size_bytes
-            existing.description  = info.description or existing.description
-            existing.depends_on   = json.dumps(info.depends_on) if info.depends_on else existing.depends_on
-            existing.required_by  = json.dumps(info.required_by) if info.required_by else existing.required_by
-            existing.updated_at   = datetime.utcnow()
+            existing.version     = info.version
+            existing.size_bytes  = info.size_bytes
+            existing.description = info.description
+            existing.updated_at  = datetime.utcnow()
             updated += 1
-            continue
-
-        # Check if the same package name exists under a higher-priority source.
-        # If so, skip this lower-priority entry to avoid duplicates in the UI.
-        same_name = db.query(Package).filter_by(name=info.name).first()
-        if same_name:
-            existing_priority = SOURCE_PRIORITY.get(same_name.source, 99)
-            new_priority      = SOURCE_PRIORITY.get(info.source, 99)
-            if existing_priority <= new_priority:
-                skipped += 1
-                continue
-            # The new entry is higher priority — update the existing record
-            same_name.source       = info.source
-            same_name.version      = info.version
-            same_name.install_type = info.install_type
-            same_name.size_bytes   = info.size_bytes or same_name.size_bytes
-            same_name.description  = info.description or same_name.description
-            same_name.updated_at   = datetime.utcnow()
-            updated += 1
-            continue
-
-        # Genuinely new package
-        db.add(Package(
-            name         = info.name,
-            version      = info.version,
-            source       = info.source,
-            install_type = info.install_type,
-            install_date = info.install_date,
-            size_bytes   = info.size_bytes,
-            description  = info.description,
-            depends_on   = json.dumps(info.depends_on) if info.depends_on else None,
-            required_by  = json.dumps(info.required_by) if info.required_by else None,
-            in_inbox     = True,
-        ))
-        added += 1
-
+        else:
+            db.add(Package(
+                name         = info.name,
+                version      = info.version,
+                source       = info.source,
+                install_type = info.install_type,
+                install_date = info.install_date,
+                size_bytes   = info.size_bytes,
+                description  = info.description,
+                in_inbox     = True,
+            ))
+            added += 1
     db.commit()
-    return {
-        "added"  : added,
-        "updated": updated,
-        "skipped": skipped,
-        "total"  : len(collected),
-    }
+    return {"added": added, "updated": updated, "total": len(collected)}
 
 
 @router.post("/event")
-def handle_event(ev: EventIn, db: Session = Depends(get_db)):
+async def handle_event(ev: EventIn, db: Session = Depends(get_db)):
     """Called by the daemon when it detects a package change."""
+    from ..routers.ws import publish_event
     names = [ev.package] if ev.package else (ev.packages or [])
     for name in names:
         pkg = db.query(Package).filter_by(name=name).first()
@@ -175,6 +113,11 @@ def handle_event(ev: EventIn, db: Session = Depends(get_db)):
                 triggered_by= "daemon",
                 occurred_at = datetime.fromisoformat(ev.timestamp) if ev.timestamp else datetime.utcnow(),
             ))
+            await publish_event(
+                ev.type, name,
+                source=ev.source or "unknown",
+                version=pkg.version,
+            )
     db.commit()
     return {"ok": True}
 

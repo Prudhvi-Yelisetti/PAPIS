@@ -1,118 +1,356 @@
+from __future__ import annotations
+
 from datetime import datetime
-from sqlalchemy import (
-    Column, Integer, String, Boolean, DateTime,
-    ForeignKey, Table, Text, BigInteger, Enum
-)
-from sqlalchemy.orm import DeclarativeBase, relationship
 import enum
+from typing import Optional
+
+from sqlalchemy import (
+    String,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Table,
+    Text,
+    BigInteger,
+    Enum,
+    Integer,
+    Column,
+)
+
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    mapped_column,
+    relationship,
+)
 
 
 class Base(DeclarativeBase):
     pass
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Enums
+# ──────────────────────────────────────────────────────────────────────────────
+
 class InstallSource(str, enum.Enum):
-    pacman   = "pacman"
-    aur      = "aur"
-    pip      = "pip"
-    npm      = "npm"
-    cargo    = "cargo"
-    flatpak  = "flatpak"
-    uv       = "uv"
-    docker   = "docker"
-    conda    = "conda"
-    manual   = "manual"
-    unknown  = "unknown"
+    pacman = "pacman"
+    aur = "aur"
+    pip = "pip"
+    npm = "npm"
+    cargo = "cargo"
+    flatpak = "flatpak"
+    uv = "uv"
+    docker = "docker"
+    conda = "conda"
+    manual = "manual"
+    unknown = "unknown"
 
 
 class InstallType(str, enum.Enum):
-    explicit     = "explicit"       # user directly installed
-    dependency   = "dependency"     # direct dep of an explicit pkg
-    transitive   = "transitive"     # dep of a dep
-    unknown      = "unknown"
+    explicit = "explicit"
+    dependency = "dependency"
+    transitive = "transitive"
+    unknown = "unknown"
 
 
-# Many-to-many: packages <-> projects
+# ──────────────────────────────────────────────────────────────────────────────
+# Association Table
+# ──────────────────────────────────────────────────────────────────────────────
+
 package_project = Table(
     "package_project",
     Base.metadata,
-    Column("package_id", Integer, ForeignKey("packages.id", ondelete="CASCADE"), primary_key=True),
-    Column("project_id", Integer, ForeignKey("projects.id",  ondelete="CASCADE"), primary_key=True),
-    Column("assigned_at", DateTime, default=datetime.utcnow),
-    Column("notes", Text, nullable=True),
+
+    Column(
+        "package_id",
+        Integer,
+        ForeignKey("packages.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+
+    Column(
+        "project_id",
+        Integer,
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+
+    Column(
+        "assigned_at",
+        DateTime,
+        default=datetime.utcnow,
+    ),
+
+    Column(
+        "notes",
+        Text,
+        nullable=True,
+    ),
 )
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Package
+# ──────────────────────────────────────────────────────────────────────────────
 
 class Package(Base):
     __tablename__ = "packages"
 
-    id              = Column(Integer, primary_key=True, index=True)
-    name            = Column(String, nullable=False, index=True)
-    version         = Column(String, nullable=False)
-    source          = Column(Enum(InstallSource), default=InstallSource.unknown)
-    install_type    = Column(Enum(InstallType),   default=InstallType.unknown)
-    install_date    = Column(DateTime, nullable=True)
-    last_updated    = Column(DateTime, nullable=True)
-    size_bytes      = Column(BigInteger, nullable=True)
-    description     = Column(Text, nullable=True)
-    # JSON-serialised dep list stored as Text; parse in application layer
-    depends_on      = Column(Text, nullable=True)   # JSON array of package names
-    required_by     = Column(Text, nullable=True)   # JSON array of package names
-    uv_mode         = Column(String, nullable=True)   # "tool" | "pip" | "add" | null
-    is_orphan       = Column(Boolean, default=False)
-    last_used_at    = Column(DateTime, nullable=True)
-    in_inbox        = Column(Boolean, default=True)  # unassigned until mapped
-    created_at      = Column(DateTime, default=datetime.utcnow)
-    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        index=True,
+    )
 
-    projects = relationship("Project", secondary=package_project, back_populates="packages")
-    install_events = relationship("InstallEvent", back_populates="package", cascade="all, delete-orphan")
+    name: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        index=True,
+    )
 
-    def __repr__(self):
+    version: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+    )
+
+    source: Mapped[InstallSource] = mapped_column(
+        Enum(InstallSource),
+        default=InstallSource.unknown,
+    )
+
+    install_type: Mapped[InstallType] = mapped_column(
+        Enum(InstallType),
+        default=InstallType.unknown,
+    )
+
+    install_date: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+    last_updated: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+    size_bytes: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        nullable=True,
+    )
+
+    description: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    depends_on: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    required_by: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    uv_mode: Mapped[Optional[str]] = mapped_column(
+        String,
+        nullable=True,
+    )
+
+    is_orphan: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+    )
+
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+    in_inbox: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    # Relationships
+    projects: Mapped[list["Project"]] = relationship(
+        secondary=package_project,
+        back_populates="packages",
+    )
+
+    install_events: Mapped[list["InstallEvent"]] = relationship(
+        back_populates="package",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:
         return f"<Package {self.name}@{self.version} [{self.source}]>"
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Project
+# ──────────────────────────────────────────────────────────────────────────────
 
 class Project(Base):
     __tablename__ = "projects"
 
-    id           = Column(Integer, primary_key=True, index=True)
-    name         = Column(String, nullable=False, unique=True, index=True)
-    description  = Column(Text, nullable=True)
-    directory    = Column(String, nullable=True)   # abs path on disk, if linked
-    tags         = Column(Text, nullable=True)     # JSON array
-    is_archived  = Column(Boolean, default=False)
-    created_at   = Column(DateTime, default=datetime.utcnow)
-    updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        index=True,
+    )
 
-    packages = relationship("Package", secondary=package_project, back_populates="projects")
+    name: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        unique=True,
+        index=True,
+    )
 
-    def __repr__(self):
+    description: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    directory: Mapped[Optional[str]] = mapped_column(
+        String,
+        nullable=True,
+    )
+
+    tags: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    # Relationships
+    packages: Mapped[list["Package"]] = relationship(
+        secondary=package_project,
+        back_populates="projects",
+    )
+
+    def __repr__(self) -> str:
         return f"<Project {self.name}>"
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Install Event
+# ──────────────────────────────────────────────────────────────────────────────
+
 class InstallEvent(Base):
-    """Append-only audit log — never update, only insert."""
     __tablename__ = "install_events"
 
-    id          = Column(Integer, primary_key=True, index=True)
-    package_id  = Column(Integer, ForeignKey("packages.id", ondelete="CASCADE"))
-    event_type  = Column(String, nullable=False)   # install | remove | update | duplicate_attempt
-    version_old = Column(String, nullable=True)
-    version_new = Column(String, nullable=True)
-    triggered_by= Column(String, nullable=True)    # e.g. "pacman_hook", "pip_wrapper"
-    metadata_   = Column("metadata", Text, nullable=True)  # JSON blob for extra context
-    occurred_at = Column(DateTime, default=datetime.utcnow, index=True)
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        index=True,
+    )
 
-    package = relationship("Package", back_populates="install_events")
+    package_id: Mapped[int] = mapped_column(
+        ForeignKey("packages.id", ondelete="CASCADE"),
+    )
 
+    event_type: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+    )
+
+    version_old: Mapped[Optional[str]] = mapped_column(
+        String,
+        nullable=True,
+    )
+
+    version_new: Mapped[Optional[str]] = mapped_column(
+        String,
+        nullable=True,
+    )
+
+    triggered_by: Mapped[Optional[str]] = mapped_column(
+        String,
+        nullable=True,
+    )
+
+    metadata_: Mapped[Optional[str]] = mapped_column(
+        "metadata",
+        Text,
+        nullable=True,
+    )
+
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        index=True,
+    )
+
+    # Relationships
+    package: Mapped["Package"] = relationship(
+        back_populates="install_events",
+    )
+
+    def __repr__(self) -> str:
+        return f"<InstallEvent {self.event_type}>"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Project Scan
+# ──────────────────────────────────────────────────────────────────────────────
 
 class ProjectScan(Base):
-    """Results from scanning a directory for manifest files."""
     __tablename__ = "project_scans"
 
-    id           = Column(Integer, primary_key=True, index=True)
-    project_id   = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"))
-    scanned_path = Column(String, nullable=False)
-    manifest     = Column(String, nullable=True)   # e.g. "pyproject.toml"
-    suggestions  = Column(Text,   nullable=True)   # JSON: list of package names to auto-assign
-    scanned_at   = Column(DateTime, default=datetime.utcnow)
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        index=True,
+    )
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+    )
+
+    scanned_path: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+    )
+
+    manifest: Mapped[Optional[str]] = mapped_column(
+        String,
+        nullable=True,
+    )
+
+    suggestions: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    scanned_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+    )
+
+    def __repr__(self) -> str:
+        return f"<ProjectScan {self.scanned_path}>"

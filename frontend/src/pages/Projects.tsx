@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { projectsApi, scanApi, exportsApi, fmtBytes, type Project, type Package } from "../api";
+import { projectsApi, scanApi, exportsApi, fmtBytes, sourceColor, type Project, type Package } from "../api";
 
 export default function Projects() {
   const [projects, setProjects]   = useState<Project[]>([]);

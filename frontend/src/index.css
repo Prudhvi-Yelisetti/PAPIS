@@ -271,3 +271,130 @@ h2 { font-size: 16px; font-weight: 500; margin-bottom: 12px; }
 
 .dup-checker  { min-height: 300px; }
 .dup-history  { max-height: 600px; overflow-y: auto; }
+
+.live-feed {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  height: 320px;
+}
+
+.live-feed__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.live-feed__title {
+  font-weight: 600;
+  font-size: 13px;
+  flex: 1;
+}
+
+.live-feed__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.live-feed__empty {
+  padding: 20px 14px;
+  font-size: 13px;
+}
+
+.feed-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  flex-wrap: wrap;
+  animation: feedRowIn 0.2s ease;
+}
+
+@keyframes feedRowIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+.feed-row:hover { background: var(--bg3); }
+
+.feed-row__time    { color: var(--text2); font-size: 11px; min-width: 64px; }
+.feed-row__badge   { flex-shrink: 0; }
+.feed-row__pkg     { font-weight: 500; }
+.feed-row__version { font-size: 12px; }
+.feed-row__source  { font-size: 11px; padding: 1px 6px; }
+
+.graph-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  padding: 16px;
+  gap: 12px;
+}
+
+.graph-controls {
+  flex-shrink: 0;
+  padding: 14px 16px;
+}
+
+.graph-body {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.graph-svg {
+  flex: 1;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: block;
+}
+
+.graph-detail {
+  width: 260px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.graph-detail__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  gap: 8px;
+}
+
+.graph-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text2);
+  font-size: 15px;
+  pointer-events: none;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 760px) {
+  .dashboard-grid { grid-template-columns: 1fr; }
+}
