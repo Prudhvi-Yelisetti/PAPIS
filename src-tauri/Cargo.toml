@@ -1,0 +1,48 @@
+[package]
+name    = "papis"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name         = "papis_lib"
+crate-type   = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "papis"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [
+    "tray-icon",
+    "image-png",
+] }
+
+# Tauri plugins
+tauri-plugin-shell        = "2"
+tauri-plugin-dialog       = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-autostart    = "2"
+tauri-plugin-process      = "2"
+tauri-plugin-fs           = "2"
+
+# Async runtime (for spawning/managing the Python backend process)
+tokio  = { version = "1", features = ["full"] }
+
+# Serialisation
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP client (health-check the FastAPI server before showing the window)
+reqwest = { version = "0.12", features = ["json"] }
+
+# Logging
+log         = "0.4"
+env_logger  = "0.11"
+
+[profile.release]
+panic  = "abort"
+strip  = true
+opt-level = "s"    # optimise for size — Tauri shell is just glue

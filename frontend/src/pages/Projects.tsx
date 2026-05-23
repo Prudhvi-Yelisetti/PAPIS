@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { projectsApi, scanApi, exportsApi, fmtBytes, sourceColor, type Project, type Package } from "../api";
+import { pickDirectory } from "../tauri";
 
 export default function Projects() {
   const [projects, setProjects]   = useState<Project[]>([]);

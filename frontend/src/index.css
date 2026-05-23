@@ -398,3 +398,15 @@ h2 { font-size: 16px; font-weight: 500; margin-bottom: 12px; }
 @media (max-width: 760px) {
   .dashboard-grid { grid-template-columns: 1fr; }
 }
+
+.settings-service-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-service-row:last-of-type { border-bottom: none; }
+.settings-service-name { font-weight: 500; margin-bottom: 2px; }
+
+.settings-about { font-size: 14px; line-height: 1.7; }
