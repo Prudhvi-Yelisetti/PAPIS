@@ -354,3 +354,15 @@ class ProjectScan(Base):
 
     def __repr__(self) -> str:
         return f"<ProjectScan {self.scanned_path}>"
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id         = Column(Integer,  primary_key=True, index=True)
+    title      = Column(String,   nullable=False)
+    body       = Column(Text,     nullable=True)
+    kind       = Column(String,   default="info")
+    package    = Column(String,   nullable=True)
+    source     = Column(String,   nullable=True)
+    is_read    = Column(Boolean,  default=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

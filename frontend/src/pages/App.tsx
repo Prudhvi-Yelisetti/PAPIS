@@ -1,8 +1,8 @@
 import { useState } from "react";
-import Dashboard from "./pages/Dashboard";
-import Inbox     from "./pages/Inbox";
-import Projects  from "./pages/Projects";
-import Analytics from "./pages/Analytics";
+import Dashboard from "./Dashboard";
+import Inbox     from "./Inbox";
+import Projects  from "./Projects";
+import Analytics from "./Analytics";
 
 type Page = "dashboard" | "inbox" | "projects" | "analytics";
 

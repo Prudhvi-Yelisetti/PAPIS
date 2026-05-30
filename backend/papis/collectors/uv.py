@@ -121,6 +121,11 @@ class UvCollector(BaseCollector):
             key = (pkg.name, pkg.description or "")
             seen.setdefault(key, pkg)
 
+        # Collect uv workspace members
+        for pkg in self._collect_workspaces():
+            key = (pkg.name, pkg.description or "")
+            seen.setdefault(key, pkg)
+
         return list(seen.values())
 
     # ── mode 1: uv tool install ───────────────────────────────────────────────
@@ -294,6 +299,29 @@ class UvCollector(BaseCollector):
         except PermissionError:
             pass
         return results
+
+    # ── uv workspaces ─────────────────────────────────────────────────────────
+
+    def _collect_workspaces(self) -> list[PackageInfo]:
+        """
+        Walk PROJECT_ROOTS looking for uv workspace roots (pyproject.toml
+        with [tool.uv.workspace]) and collect packages from each member.
+        """
+        from .uv_workspace import collect_workspace_packages
+        pkgs: list[PackageInfo] = []
+        visited: set[str] = set()
+
+        for root in self.PROJECT_ROOTS:
+            if not root.exists():
+                continue
+            for pyproject in root.rglob("pyproject.toml"):
+                ws_root = str(pyproject.parent)
+                if ws_root in visited:
+                    continue
+                visited.add(ws_root)
+                pkgs.extend(collect_workspace_packages(pyproject.parent, self._uv))
+
+        return pkgs
 
     # ── helpers ───────────────────────────────────────────────────────────────
 

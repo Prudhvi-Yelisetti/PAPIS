@@ -1,0 +1,158 @@
+# Maintainer: Your Name <you@example.com>
+# AUR package: papis-git
+
+pkgname=papis-git
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Project-Aware Package Intelligence System — track and organise all installed packages"
+arch=("x86_64")
+url="https://github.com/your-org/papis"
+license=("MIT")
+depends=(
+    "python>=3.11"
+    "python-fastapi"
+    "python-uvicorn"
+    "python-sqlalchemy"
+    "python-alembic"
+    "python-httpx"
+    "python-pydantic"
+    "inotify-tools"
+    "socat"
+    "curl"
+    "jq"
+    "webkit2gtk-4.1"    # Tauri dependency
+)
+makedepends=(
+    "rust"
+    "cargo"
+    "nodejs"
+    "npm"
+    "git"
+)
+optdepends=(
+    "docker: Docker/container package tracking"
+    "podman: Podman container tracking"
+    "conda: Conda environment tracking"
+    "uv: uv package manager support (recommended)"
+    "notify2: Desktop notifications from daemon"
+)
+provides=("papis")
+conflicts=("papis")
+source=("git+https://github.com/your-org/papis.git")
+sha256sums=("SKIP")
+
+
+pkgver() {
+    cd "$srcdir/papis"
+    git describe --long --tags --abbrev=7 2>/dev/null \
+        | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' \
+        || printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+
+build() {
+    cd "$srcdir/papis"
+
+    # 1. Install Python backend deps into a venv (bundled with the package)
+    python3 -m venv .venv
+    .venv/bin/pip install -e backend/ --quiet
+
+    # 2. Install frontend deps and build the React app
+    cd frontend
+    npm ci --silent
+    npm run build
+    cd ..
+
+    # 3. Build the Tauri desktop app
+    # Tauri build picks up the already-built frontend from frontend/dist
+    cd src-tauri
+    cargo build --release
+    cd ..
+}
+
+
+package() {
+    cd "$srcdir/papis"
+
+    install -d "$pkgdir/usr/lib/papis"
+    install -d "$pkgdir/usr/bin"
+    install -d "$pkgdir/usr/share/applications"
+    install -d "$pkgdir/usr/share/icons/hicolor/128x128/apps"
+    install -d "$pkgdir/etc/pacman.d/hooks"
+    install -d "$pkgdir/usr/local/bin"
+
+    # Python backend + venv
+    cp -r backend/  "$pkgdir/usr/lib/papis/backend"
+    cp -r .venv/    "$pkgdir/usr/lib/papis/venv"
+
+    # Daemon
+    cp -r daemon/   "$pkgdir/usr/lib/papis/daemon"
+
+    # Linux integration scripts
+    cp -r linux-integration/ "$pkgdir/usr/lib/papis/linux-integration"
+
+    # Tauri binary
+    install -Dm755 \
+        "src-tauri/target/release/papis" \
+        "$pkgdir/usr/bin/papis"
+
+    # API server launcher
+    cat > "$pkgdir/usr/bin/papis-api" <<EOF
+#!/usr/bin/env bash
+exec /usr/lib/papis/venv/bin/uvicorn papis.main:app \
+    --host 127.0.0.1 --port 8765 "\$@"
+EOF
+    chmod +x "$pkgdir/usr/bin/papis-api"
+
+    # Daemon launcher
+    cat > "$pkgdir/usr/bin/papis-daemon" <<'EOF'
+#!/usr/bin/env bash
+export PYTHONPATH=/usr/lib/papis/backend
+exec /usr/lib/papis/venv/bin/python -m daemon.papis_daemon
+EOF
+    chmod +x "$pkgdir/usr/bin/papis-daemon"
+
+    # pacman hook
+    install -Dm644 \
+        linux-integration/hooks/papis.hook \
+        "$pkgdir/etc/pacman.d/hooks/papis.hook"
+
+    # pacman hook helper script
+    install -Dm755 \
+        linux-integration/hooks/papis-pacman-hook \
+        "$pkgdir/usr/local/bin/papis-pacman-hook"
+
+    # Desktop entry
+    cat > "$pkgdir/usr/share/applications/papis.desktop" <<EOF
+[Desktop Entry]
+Name=PAPIS
+GenericName=Package Intelligence
+Comment=Project-Aware Package Intelligence System
+Exec=papis
+Icon=papis
+Terminal=false
+Type=Application
+Categories=Development;PackageManager;
+Keywords=packages;dependencies;projects;
+StartupNotify=true
+EOF
+
+    # App icon
+    install -Dm644 \
+        src-tauri/icons/128x128.png \
+        "$pkgdir/usr/share/icons/hicolor/128x128/apps/papis.png"
+
+    # Shell hook files (users source these from their rc files)
+    install -Dm644 \
+        linux-integration/shell/papis.bash \
+        "$pkgdir/usr/lib/papis/shell/papis.bash"
+    install -Dm644 \
+        linux-integration/shell/papis.zsh \
+        "$pkgdir/usr/lib/papis/shell/papis.zsh"
+    install -Dm644 \
+        linux-integration/shell/papis_check.bash \
+        "$pkgdir/usr/lib/papis/shell/papis_check.bash"
+
+    # License
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
