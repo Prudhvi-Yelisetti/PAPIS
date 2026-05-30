@@ -1,23 +1,69 @@
-#[build-system]
-# requires      = ["hatchling"]
-# build-backend = "hatchling.build"
-#
-# [project]
-# name     = "papis"
-# version  = "0.1.0"
-# requires-python = ">=3.11"
-# dependencies = [
-#   "fastapi>=0.111",
-#   "uvicorn[standard]>=0.29",
-#   "sqlalchemy>=2.0",
-#   "alembic>=1.13",
-#   "pydantic>=2.0",
-#   "httpx>=0.27",
-#   "inotify-simple>=1.3",
-#   "notify2>=0.3",
-#   "tomli>=2.0; python_version < '3.11'",
-# ]
-#
-# [project.scripts]
-# papis-api    = "papis.main:app"           # run via uvicorn
-# papis-daemon = "daemon.papis_daemon:main"
+[build-system]
+requires      = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name            = "papis"
+version         = "0.1.0"
+description     = "Project-Aware Package Intelligence System"
+readme          = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    # Web framework
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+
+    # Database
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+
+    # Validation / serialisation
+    "pydantic>=2.0",
+
+    # HTTP client (used by daemon + Tauri health check helper)
+    "httpx>=0.27",
+
+    # Linux filesystem watching (daemon)
+    "inotify-simple>=1.3",
+
+    # Desktop notifications (daemon)
+    "notify2>=0.3",
+
+    # TOML parsing for pyproject.toml / Cargo.toml scanners
+    # tomllib is stdlib in 3.11+; tomli is a fallback for older envs
+    # Listed here so packaging tools pull it in for <3.11 targets
+    "tomli>=2.0; python_version < '3.11'",
+
+    # Serving the built frontend (browser-only / local mode)
+    "aiofiles>=23.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",      # async test client for FastAPI
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+# Convenience entry points installed into the venv's bin/
+papis-api    = "papis._cli:run_api"
+papis-daemon = "papis._cli:run_daemon"
+
+[tool.hatch.build.targets.wheel]
+packages = ["papis"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict         = false
+ignore_missing_imports = true

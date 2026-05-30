@@ -4,31 +4,33 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev":           "vite --port 1420 --strictPort",
-    "build":         "tsc && vite build",
-    "preview":       "vite preview",
-    "tauri":         "tauri",
-    "tauri:dev":     "tauri dev",
-    "tauri:build":   "tauri build",
-    "tauri:build:debug": "tauri build --debug"
+    "dev":               "vite --port 1420 --strictPort",
+    "build":             "tsc && vite build",
+    "build:browser":     "tsc && vite build --mode production",
+    "build:tauri":       "cp .env.tauri .env.production && tsc && vite build",
+    "preview":           "vite preview --port 1420",
+    "tauri":             "tauri",
+    "tauri:dev":         "tauri dev",
+    "tauri:build":       "npm run build:tauri && tauri build",
+    "tauri:build:debug": "npm run build:tauri && tauri build --debug"
   },
   "dependencies": {
-    "@tauri-apps/api":            "^2.0.0",
-    "@tauri-apps/plugin-autostart":   "^2.0.0",
-    "@tauri-apps/plugin-dialog":      "^2.0.0",
-    "@tauri-apps/plugin-fs":          "^2.0.0",
-    "@tauri-apps/plugin-notification":"^2.0.0",
-    "@tauri-apps/plugin-process":     "^2.0.0",
-    "@tauri-apps/plugin-shell":       "^2.0.0",
-    "react":         "^18.3.1",
-    "react-dom":     "^18.3.1"
+    "@tauri-apps/api":                    "^2.0.0",
+    "@tauri-apps/plugin-autostart":       "^2.0.0",
+    "@tauri-apps/plugin-dialog":          "^2.0.0",
+    "@tauri-apps/plugin-fs":              "^2.0.0",
+    "@tauri-apps/plugin-notification":    "^2.0.0",
+    "@tauri-apps/plugin-process":         "^2.0.0",
+    "@tauri-apps/plugin-shell":           "^2.0.0",
+    "react":                              "^18.3.1",
+    "react-dom":                          "^18.3.1"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.0.0",
-    "@types/react":    "^18.3.1",
-    "@types/react-dom":"^18.3.1",
+    "@tauri-apps/cli":      "^2.0.0",
+    "@types/react":         "^18.3.1",
+    "@types/react-dom":     "^18.3.1",
     "@vitejs/plugin-react": "^4.3.1",
-    "typescript":      "^5.5.3",
-    "vite":            "^5.4.2"
+    "typescript":           "^5.5.3",
+    "vite":                 "^5.4.2"
   }
 }
