@@ -38,6 +38,20 @@ WATCH_DIRS  = [
     Path.home() / ".npm",             # npm global
 ]
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [papis-daemon] %(levelname)s %(message)s",
+)
+log = logging.getLogger("papis-daemon")
+
+API_BASE    = os.getenv("PAPIS_API", "http://127.0.0.1:8765")
+PIPE_PATH   = Path("/run/user") / str(os.getuid()) / "papis.sock"
+WATCH_DIRS  = [
+    Path.home() / ".local" / "lib",   # pip user installs
+    Path.home() / ".cargo" / "bin",   # cargo installs
+    Path.home() / ".npm",             # npm global
+]
+
 
 class PapisDaemon:
     def __init__(self):
@@ -51,7 +65,7 @@ class PapisDaemon:
         await asyncio.gather(
             self._unix_socket_listener(),
             self._inotify_watcher(),
-            self._docker.watch(),          # ← Docker event stream
+            self._docker.watch(),
         )
 
     async def stop(self):
@@ -103,9 +117,9 @@ class PapisDaemon:
         ev_type  = "install" if event.mask & inotify_simple.flags.CREATE else "remove"
         log.info("fs event: %s %s in %s", ev_type, pkg_name, directory)
         await self._notify_api({
-            "type": ev_type,
-            "package": pkg_name,
-            "source": self._infer_source(directory),
+            "type"     : ev_type,
+            "package"  : pkg_name,
+            "source"   : self._infer_source(directory),
             "timestamp": datetime.utcnow().isoformat(),
         })
 
@@ -113,35 +127,46 @@ class PapisDaemon:
         log.info("hook event: %s", msg)
         ev_type  = msg.get("type", "")
         pkg_name = msg.get("package", "?")
-        uv_mode  = msg.get("uv_mode", "")   # "tool" | "pip" | "add" | ""
+        uv_mode  = msg.get("uv_mode", "")
 
         await self._notify_api(msg)
 
         if ev_type == "install":
             mode_label = f" ({uv_mode})" if uv_mode else ""
-            self._desktop_notify(
-                f"Package installed: {pkg_name}{mode_label}",
-                "PAPIS: assign it to a project in the dashboard.",
-            )
+            title = f"Package installed: {pkg_name}{mode_label}"
+            body  = "PAPIS: assign it to a project in the dashboard."
+            self._desktop_notify(title, body)
+            await self._persist_notification(title, body, kind="success",
+                                             package=pkg_name,
+                                             source=msg.get("source", ""))
+
         elif ev_type == "remove":
-            self._desktop_notify(
-                f"Package removed: {pkg_name}",
-                "PAPIS: package has been untracked.",
-            )
+            title = f"Package removed: {pkg_name}"
+            body  = "PAPIS: package has been untracked."
+            self._desktop_notify(title, body)
+            await self._persist_notification(title, body, kind="info",
+                                             package=pkg_name,
+                                             source=msg.get("source", ""))
+
         elif ev_type == "duplicate":
-            self._desktop_notify(
-                f"Already installed: {pkg_name}",
-                "PAPIS: this package is already tracked. Check your projects.",
-            )
+            title = f"Already installed: {pkg_name}"
+            body  = "PAPIS: this package is already tracked. Check your projects."
+            self._desktop_notify(title, body)
+            await self._persist_notification(title, body, kind="warning",
+                                             package=pkg_name,
+                                             source=msg.get("source", ""))
+
         elif ev_type == "uv_sync":
             log.info("uv sync detected — triggering full package sync")
             try:
                 r = await self._http.post("/api/packages/sync")
                 data = r.json()
-                self._desktop_notify(
-                    "uv sync complete",
-                    f"PAPIS: {data.get('added', 0)} new, {data.get('updated', 0)} updated packages.",
-                )
+                added   = data.get("added", 0)
+                updated = data.get("updated", 0)
+                title = "uv sync complete"
+                body  = f"PAPIS: {added} new, {updated} updated packages."
+                self._desktop_notify(title, body)
+                await self._persist_notification(title, body, kind="info")
             except Exception as e:
                 log.warning("sync after uv sync failed: %s", e)
 
@@ -151,6 +176,30 @@ class PapisDaemon:
             r.raise_for_status()
         except Exception as e:
             log.warning("API notify failed: %s", e)
+
+    async def _persist_notification(
+        self,
+        title: str,
+        body: str,
+        kind: str = "info",
+        package: str = "",
+        source: str = "",
+    ):
+        """
+        POST to the PAPIS notification center so the in-app
+        notification history is always in sync with desktop alerts.
+        """
+        payload = {
+            "title"  : title,
+            "body"   : body,
+            "kind"   : kind,
+            "package": package or None,
+            "source" : source  or None,
+        }
+        try:
+            await self._http.post("/api/notifications/", json=payload)
+        except Exception as e:
+            log.warning("Failed to persist notification: %s", e)
 
     def _desktop_notify(self, title: str, body: str):
         try:
@@ -163,9 +212,9 @@ class PapisDaemon:
     @staticmethod
     def _infer_source(directory: Path) -> str:
         s = str(directory)
-        if ".cargo"  in s: return "cargo"
-        if ".npm"    in s: return "npm"
-        if ".local"  in s: return "pip"
+        if ".cargo" in s: return "cargo"
+        if ".npm"   in s: return "npm"
+        if ".local" in s: return "pip"
         return "unknown"
 
 

@@ -1,10 +1,65 @@
-# Python-generated files
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
-*.py[oc]
-build/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
 dist/
-wheels/
-*.egg-info
+build/
+.eggs/
+.venv/
+venv/
+env/
+.env
+pip-wheel-metadata/
+*.pyo
 
-# Virtual environments
-.venv
+# ── uv ────────────────────────────────────────────────────────────────────────
+.python-version
+uv.lock
+
+# ── Database ──────────────────────────────────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# ── Node / Frontend ───────────────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.env.production
+.npm/
+
+# ── Tauri / Rust ──────────────────────────────────────────────────────────────
+src-tauri/target/
+Cargo.lock
+
+# ── Alembic ───────────────────────────────────────────────────────────────────
+# Keep migration scripts, ignore generated temp files
+backend/alembic/__pycache__/
+
+# ── Editor / OS ───────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Test / coverage ───────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ── Packaging ─────────────────────────────────────────────────────────────────
+packaging/pkg/
+packaging/src/
