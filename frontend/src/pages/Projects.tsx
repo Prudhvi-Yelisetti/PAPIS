@@ -31,6 +31,11 @@ export default function Projects() {
     selectProject(p);
   }
 
+  async function handlePickDir() {
+    const dir = await pickDirectory();
+    if (dir) setNewDir(dir);
+  }
+
   async function deleteProject(id: number) {
     const confirm = window.confirm("Delete project? Packages will return to inbox.");
     if (!confirm) return;
@@ -83,6 +88,9 @@ export default function Projects() {
               className="input" placeholder="Directory (optional)" value={newDir}
               onChange={e => setNewDir(e.target.value)}
             />
+            <button className="btn btn-ghost btn-sm" onClick={handlePickDir} title="Browse">
+              …
+            </button>
             <div className="create-form__actions">
               <button className="btn btn-primary btn-sm" onClick={createProject}>Create</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setCreating(false)}>Cancel</button>

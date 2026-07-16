@@ -11,7 +11,7 @@ from .routers import packages, projects, analytics, exports
 from .routers.duplicates    import router as duplicates_router
 from .routers.ws            import router as ws_router, PackageEventPublisher
 from .routers.graph         import router as graph_router
-from .routers.notifications import router as notif_router
+from .notifications import router as notif_router
 from .scanner               import scan_router
 
 
@@ -84,7 +84,7 @@ def health():
 # http://127.0.0.1:8765 opens the UI and all /api/* routes still work.
 #
 # This block is intentionally LAST so API routes take priority over static files.
-_frontend_dist = Path(__file__).parents[3] / "frontend" / "dist"
+_frontend_dist = Path(__file__).parents[2] / "frontend" / "dist"
 if _frontend_dist.exists():
     # Serve static assets (JS, CSS, images) under the root path
     app.mount(

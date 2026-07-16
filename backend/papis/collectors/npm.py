@@ -1,3 +1,9 @@
+import json
+import subprocess
+
+from .base import BaseCollector, PackageInfo
+from ..models import InstallSource
+
 class NpmCollector(BaseCollector):
     def is_available(self) -> bool:
         return subprocess.run(["which", "npm"], capture_output=True).returncode == 0

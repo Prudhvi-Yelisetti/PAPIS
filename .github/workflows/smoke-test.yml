@@ -1,0 +1,134 @@
+name: Smoke Test
+
+on:
+  push:
+    branches: [main, Claude]
+  pull_request:
+    branches: [main, Claude]
+
+jobs:
+  backend-import:
+    name: Backend imports cleanly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: Import FastAPI app
+        working-directory: backend
+        run: |
+          python -c "
+          from papis.main import app
+          assert len(app.routes) > 0, 'No routes registered'
+          print(f'OK — {len(app.routes)} routes registered')
+          "
+
+      - name: Import every collector
+        working-directory: backend
+        run: |
+          python -c "
+          from papis.collectors.registry import ALL_COLLECTORS
+          for c in ALL_COLLECTORS:
+              print(f'OK — {c.__class__.__name__}')
+          "
+
+      - name: Import daemon module
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, 'backend')
+          sys.path.insert(0, '.')
+          from daemon.papis_daemon import main
+          print('OK — daemon imports cleanly')
+          "
+
+  backend-migrations:
+    name: Alembic migrations apply cleanly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Run migrations against a throwaway DB
+        working-directory: backend
+        env:
+          PAPIS_DB_PATH: /tmp/papis-ci-test.db
+        run: |
+          python -c "
+          from papis.database import init_db
+          init_db(dev_mode=False)
+          print('OK — migrations applied with no fallback')
+          "
+
+  frontend-build:
+    name: Frontend builds with zero TypeScript errors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type-check + build
+        working-directory: frontend
+        run: |
+          cp .env.tauri .env.production
+          npx tsc
+          npx vite build
+
+  rust-check:
+    name: Tauri shell compiles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check

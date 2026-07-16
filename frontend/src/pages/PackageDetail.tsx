@@ -13,11 +13,9 @@
 import { useEffect, useState } from "react";
 import {
   packagesApi, projectsApi, analyticsApi,
-  exportsApi, fmtBytes, sourceColor, sourceLabel,
+  fmtBytes, sourceColor, sourceLabel,
   type Package, type Project, type TimelineEvent,
 } from "../api";
-
-const API = "http://127.0.0.1:8765";
 
 interface Props {
   packageId: number;
@@ -26,14 +24,13 @@ interface Props {
 }
 
 export default function PackageDetail({ packageId, onClose, onNavigateToPackage }: Props) {
-  const [pkg, setPkg]           = useState<Package | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [pkg, setPkg]               = useState<Package | null>(null);
+  const [projects, setProjects]     = useState<Project[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
-  const [history, setHistory]   = useState<TimelineEvent[]>([]);
-  const [deps, setDeps]         = useState<Package[]>([]);
-  const [requiredBy, setRequiredBy] = useState<Package[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [assigning, setAssigning] = useState(false);
+  const [history, setHistory]       = useState<TimelineEvent[]>([]);
+  const [deps, setDeps]             = useState<Package[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [assigning, setAssigning]   = useState(false);
   const [exportText, setExportText] = useState("");
 
   useEffect(() => {
@@ -52,16 +49,14 @@ export default function PackageDetail({ packageId, onClose, onNavigateToPackage 
     setProjects(ap.filter(proj => p.project_ids.includes(proj.id)));
     setHistory(ev.filter(e => e.package === p.name));
 
-    // Resolve dep names to tracked package objects
-    const depNames: string[] = p.description
-      ? []   // deps are in depends_on field parsed separately
-      : [];
-    // Fetch dep packages by name search
     const depsRaw = await Promise.all(
       (JSON.parse((p as any).depends_on || "[]") as string[])
         .slice(0, 20)
-        .map((n: string) => packagesApi.list({ search: n.split(">")[0].split("<")[0].split("=")[0].trim() })
-          .then(r => r[0] ?? null))
+        .map((n: string) =>
+          packagesApi.list({
+            search: n.split(">")[0].split("<")[0].split("=")[0].trim()
+          }).then(r => r[0] ?? null)
+        )
     );
     setDeps(depsRaw.filter(Boolean) as Package[]);
     setLoading(false);
@@ -116,16 +111,18 @@ export default function PackageDetail({ packageId, onClose, onNavigateToPackage 
         </div>
 
         <div className="pkg-detail__body">
-          {/* ── metadata grid ─────────────────────────────────────────── */}
+
+          {/* ── metadata ─────────────────────────────────────────────── */}
           <section className="card pkg-detail__section">
             <h2>Metadata</h2>
             <div className="pkg-meta-grid">
               <MetaRow label="Install type" value={pkg.install_type} />
               <MetaRow label="Size"         value={fmtBytes(pkg.size_bytes)} />
-              <MetaRow label="Install date" value={pkg.install_date
-                ? new Date(pkg.install_date).toLocaleString() : "–"} />
+              <MetaRow label="Install date" value={
+                pkg.install_date ? new Date(pkg.install_date).toLocaleString() : "–"
+              } />
               {pkg.description && (
-                <MetaRow label="Description"  value={pkg.description} />
+                <MetaRow label="Description" value={pkg.description} />
               )}
             </div>
           </section>
@@ -134,7 +131,9 @@ export default function PackageDetail({ packageId, onClose, onNavigateToPackage 
           <section className="card pkg-detail__section">
             <h2>Projects</h2>
             {projects.length === 0 ? (
-              <p className="muted" style={{ fontSize: 13 }}>Not assigned to any project.</p>
+              <p className="muted" style={{ fontSize: 13 }}>
+                Not assigned to any project.
+              </p>
             ) : (
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
                 {projects.map(p => (
@@ -208,9 +207,9 @@ export default function PackageDetail({ packageId, onClose, onNavigateToPackage 
                       </td>
                       <td>
                         <span className={`badge ${
-                          ev.event_type === "install"            ? "badge--green"  :
-                          ev.event_type === "remove"             ? "badge--red"    :
-                          ev.event_type === "duplicate_attempt"  ? "badge--yellow" :
+                          ev.event_type === "install"           ? "badge--green"  :
+                          ev.event_type === "remove"            ? "badge--red"    :
+                          ev.event_type === "duplicate_attempt" ? "badge--yellow" :
                           "badge--blue"
                         }`}>{ev.event_type}</span>
                       </td>
@@ -228,7 +227,7 @@ export default function PackageDetail({ packageId, onClose, onNavigateToPackage 
           <section className="card pkg-detail__section">
             <h2>Quick export</h2>
             <p className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
-              Export this package's details. For full project exports, use the Projects page.
+              For full project exports, use the Projects page.
             </p>
             <div style={{ display: "flex", gap: 8 }}>
               <button className="btn btn-sm" onClick={() => {
@@ -238,7 +237,10 @@ export default function PackageDetail({ packageId, onClose, onNavigateToPackage 
                 navigator.clipboard.writeText(pkg.name);
               }}>Copy name</button>
               <button className="btn btn-sm" onClick={() => {
-                const json = JSON.stringify({ name: pkg.name, version: pkg.version, source: pkg.source }, null, 2);
+                const json = JSON.stringify(
+                  { name: pkg.name, version: pkg.version, source: pkg.source },
+                  null, 2
+                );
                 setExportText(json);
               }}>Copy JSON</button>
             </div>
@@ -246,6 +248,7 @@ export default function PackageDetail({ packageId, onClose, onNavigateToPackage 
               <pre className="export-box" style={{ marginTop: 10 }}>{exportText}</pre>
             )}
           </section>
+
         </div>
       </div>
     </div>

@@ -25,6 +25,18 @@ struct BackendProcess(Arc<Mutex<Option<Child>>>);
 pub fn run() {
     env_logger::init();
 
+    // Work around a common WebKitGTK/Wayland issue on some GPU + compositor
+    // combinations where hardware-accelerated DMA-BUF/GBM buffer allocation
+    // fails ("Failed to create GBM buffer..."), which can result in a blank/
+    // white webview even though the app itself is running fine. Forcing
+    // software rendering avoids this at a small performance cost.
+    if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+    if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    }
+
     Builder::default()
         // ── plugins ──────────────────────────────────────────────────────────
         .plugin(tauri_plugin_shell::init())
@@ -106,24 +118,60 @@ fn spawn_backend(handle: &AppHandle) {
         return;
     }
 
-    // Resolve the bundled uvicorn / python interpreter.
-    // The backend is bundled under resources/backend/.
-    let backend_dir = res_dir.join("backend");
-    let python      = which_python();
+    // If a backend is already listening on 8765 (e.g. a previous instance
+    // of PAPIS is still running, or the user started it manually), reuse it
+    // instead of spawning a second process that will fail to bind the port.
+    if std::net::TcpStream::connect_timeout(
+        &"127.0.0.1:8765".parse().unwrap(),
+        Duration::from_millis(300),
+    ).is_ok() {
+        log::info!("Backend already running on port 8765 — reusing it, not spawning a new one");
+        return;
+    }
 
-    log::info!("Spawning FastAPI backend: {} -m uvicorn …", python);
+    // Resolve the venv's papis-api entry-point script directly, bypassing
+    // the bundled/mounted resource copy of backend/ entirely. This avoids
+    // running Python against a read-only FUSE-mounted AppImage filesystem,
+    // which has caused hangs during SQLite/Alembic startup.
+    let venv_python = find_venv_python();
+    let papis_api_script = venv_python.as_ref().and_then(|py| {
+        let candidate = py.parent()?.join("papis-api");
+        if candidate.exists() { Some(candidate) } else { None }
+    });
 
-    let child = Command::new(&python)
-        .args([
-            "-m", "uvicorn",
-            "papis.main:app",
-            "--host", "127.0.0.1",
-            "--port", "8765",
-            "--log-level", "warning",
-        ])
-        .current_dir(&backend_dir)
-        .env("PYTHONPATH", &backend_dir)
-        .spawn();
+    let child = if let (Some(py), Some(script)) = (&venv_python, &papis_api_script) {
+        log::info!("Spawning backend via venv entry point: {}", script.display());
+        Command::new(py)
+            .arg(script)
+            .env("PAPIS_HOST", "127.0.0.1")
+            .env("PAPIS_PORT", "8765")
+            .env("PAPIS_LOG_LEVEL", "warning")
+            .env_remove("PYTHONHOME")
+            .spawn()
+    } else {
+        // Fallback: bundled resource copy (original behaviour)
+        let mut backend_dir = res_dir.join("backend");
+        if !backend_dir.exists() {
+            let alt = res_dir.join("_up_").join("backend");
+            if alt.exists() {
+                backend_dir = alt;
+            }
+        }
+        let python = which_python();
+        log::warn!("No venv papis-api found — falling back to bundled resources: {} -m uvicorn …", python);
+        Command::new(&python)
+            .args([
+                "-m", "uvicorn",
+                "papis.main:app",
+                "--host", "127.0.0.1",
+                "--port", "8765",
+                "--log-level", "warning",
+            ])
+            .current_dir(&backend_dir)
+            .env("PYTHONPATH", &backend_dir)
+            .env_remove("PYTHONHOME")
+            .spawn()
+    };
 
     match child {
         Ok(c) => {
@@ -143,7 +191,7 @@ fn kill_backend(app: &AppHandle) {
             let _ = child.kill();
             log::info!("Backend process killed on exit");
         }
-    }
+    };
 }
 
 /// Poll the /health endpoint until it responds (up to 15 s).
@@ -165,7 +213,56 @@ async fn wait_for_backend() {
     log::warn!("Backend did not respond within 15 s — showing window anyway");
 }
 
+fn find_venv_python() -> Option<std::path::PathBuf> {
+    // 1. Try walking up from the APPIMAGE path if set
+    if let Ok(appimage_path) = std::env::var("APPIMAGE") {
+        if let Some(parent) = std::path::Path::new(&appimage_path).parent() {
+            let mut current = parent.to_path_buf();
+            for _ in 0..10 {
+                let venv_python = current.join(".venv").join("bin").join("python3");
+                if venv_python.exists() {
+                    return Some(venv_python);
+                }
+                let venv_python_alt = current.join(".venv").join("bin").join("python");
+                if venv_python_alt.exists() {
+                    return Some(venv_python_alt);
+                }
+                if !current.pop() {
+                    break;
+                }
+            }
+        }
+    }
+
+    // 2. Try walking up from the current working directory
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut current = cwd;
+        for _ in 0..10 {
+            let venv_python = current.join(".venv").join("bin").join("python3");
+            if venv_python.exists() {
+                return Some(venv_python);
+            }
+            let venv_python_alt = current.join(".venv").join("bin").join("python");
+            if venv_python_alt.exists() {
+                return Some(venv_python_alt);
+            }
+            if !current.pop() {
+                break;
+            }
+        }
+    }
+
+    None
+}
+
 fn which_python() -> String {
+    if let Some(venv_py) = find_venv_python() {
+        if let Some(path_str) = venv_py.to_str() {
+            log::info!("Using virtualenv Python: {}", path_str);
+            return path_str.to_string();
+        }
+    }
+
     for candidate in ["python3", "python"] {
         if Command::new(candidate)
             .arg("--version")
@@ -317,7 +414,7 @@ async fn open_directory_dialog(app: AppHandle) -> Result<Option<String>, String>
         .file()
         .set_title("Select project directory")
         .blocking_pick_folder();
-    Ok(path.map(|p| p.to_string_lossy().to_string()))
+    Ok(path.map(|p| p.to_string()))
 }
 
 /// Send a native OS notification from the frontend.

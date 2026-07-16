@@ -1,3 +1,8 @@
+import subprocess
+
+from .base import BaseCollector, PackageInfo
+from ..models import InstallSource
+
 class FlatpakCollector(BaseCollector):
     def is_available(self) -> bool:
         return subprocess.run(["which", "flatpak"], capture_output=True).returncode == 0

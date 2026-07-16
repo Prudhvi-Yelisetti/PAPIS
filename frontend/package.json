@@ -9,10 +9,9 @@
     "build:browser":     "tsc && vite build --mode production",
     "build:tauri":       "cp .env.tauri .env.production && tsc && vite build",
     "preview":           "vite preview --port 1420",
-    "tauri":             "tauri",
-    "tauri:dev":         "tauri dev",
-    "tauri:build":       "npm run build:tauri && tauri build",
-    "tauri:build:debug": "npm run build:tauri && tauri build --debug"
+    "tauri:dev":         "cd ../src-tauri && tauri dev",
+    "tauri:build":       "npm run build:tauri && cd ../src-tauri && NO_STRIP=1 APPIMAGE_EXTRACT_AND_RUN=1 tauri build",
+    "tauri:build:debug": "npm run build:tauri && cd ../src-tauri && tauri build --debug"
   },
   "dependencies": {
     "@tauri-apps/api":                    "^2.0.0",

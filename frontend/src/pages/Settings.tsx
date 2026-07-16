@@ -157,14 +157,8 @@ function ServiceBadge({ running, loading }: { running: boolean; loading: boolean
 }
 
 function EnvironmentInfo() {
-  const [info, setInfo] = useState<Record<string, string>>({});
-
   useEffect(() => {
-    // Fetch live environment info from the backend
-    fetch("http://127.0.0.1:8765/health")
-      .then(r => r.json())
-      .then(d => setInfo(d))
-      .catch(() => {});
+    fetch("http://127.0.0.1:8765/health").catch(() => {});
   }, []);
 
   const rows: [string, string][] = [

@@ -98,8 +98,13 @@ def init_db(dev_mode: bool = False):
             from alembic import command as alembic_cmd
 
             cfg = Config(str(alembic_ini))
-            # Override the URL so it always matches the runtime DB_PATH
+            # Override the URL so it always matches the runtime DB_PATH.
+            # Also force script_location to an ABSOLUTE path — the ini file's
+            # relative "alembic" value only resolves correctly if the process
+            # cwd happens to be backend/, which isn't guaranteed (e.g. when
+            # spawned from Tauri via the venv's papis-api entry point).
             cfg.set_main_option("sqlalchemy.url", f"sqlite:///{DB_PATH}")
+            cfg.set_main_option("script_location", str(alembic_ini.parent / "alembic"))
             alembic_cmd.upgrade(cfg, "head")
         except Exception as exc:
             # Log but don't crash — fall back to create_all so the app

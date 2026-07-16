@@ -1,15 +1,13 @@
-SYSTEMD_UNIT = """
 [Unit]
 Description=PAPIS — Package Intelligence Daemon
 After=network.target graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/papis-daemon
+ExecStart=%h/Projects/Project_Aware_Package_Intelligence_System/Claude/.venv/bin/papis-daemon
 Restart=on-failure
 RestartSec=5
 Environment=PAPIS_API=http://127.0.0.1:8765
 
 [Install]
 WantedBy=default.target
-"""

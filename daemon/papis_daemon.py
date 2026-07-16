@@ -20,23 +20,21 @@ from pathlib import Path
 
 import httpx
 import inotify_simple    # pip install inotify-simple
-import notify2           # pip install notify2
 
-from watchers.docker_watcher import DockerWatcher
+try:
+    import notify2        # requires system package: python-dbus
+    _NOTIFY2_AVAILABLE = True
+except ImportError:
+    _NOTIFY2_AVAILABLE = False
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [papis-daemon] %(levelname)s %(message)s",
-)
-log = logging.getLogger("papis-daemon")
-
-API_BASE    = os.getenv("PAPIS_API", "http://127.0.0.1:8765")
-PIPE_PATH   = Path("/run/user") / str(os.getuid()) / "papis.sock"
-WATCH_DIRS  = [
-    Path.home() / ".local" / "lib",   # pip user installs
-    Path.home() / ".cargo" / "bin",   # cargo installs
-    Path.home() / ".npm",             # npm global
-]
+try:
+    # Normal case: papis_daemon loaded as the "daemon" package's submodule
+    # (e.g. via `from daemon.papis_daemon import main`), so relative import works.
+    from .watchers.docker_watcher import DockerWatcher
+except ImportError:
+    # Fallback for running this file directly as a script from inside daemon/
+    # (e.g. `python papis_daemon.py`), where relative imports aren't available.
+    from watchers.docker_watcher import DockerWatcher
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,7 +56,18 @@ class PapisDaemon:
         self._running = True
         self._http = httpx.AsyncClient(base_url=API_BASE, timeout=5)
         self._docker = DockerWatcher(api_base=API_BASE)
-        notify2.init("PAPIS")
+        if _NOTIFY2_AVAILABLE:
+            try:
+                notify2.init("PAPIS")
+            except Exception as e:
+                # No D-Bus session available (e.g. headless/SSH) — desktop
+                # notifications will silently no-op, but the daemon still runs.
+                log.warning("notify2.init() failed, desktop notifications disabled: %s", e)
+        else:
+            log.warning(
+                "notify2/dbus not available — desktop notifications disabled. "
+                "Install with: sudo pacman -S python-dbus"
+            )
 
     async def start(self):
         log.info("PAPIS daemon starting (API=%s)", API_BASE)
@@ -202,6 +211,8 @@ class PapisDaemon:
             log.warning("Failed to persist notification: %s", e)
 
     def _desktop_notify(self, title: str, body: str):
+        if not _NOTIFY2_AVAILABLE:
+            return
         try:
             n = notify2.Notification(title, body, "dialog-information")
             n.set_urgency(notify2.URGENCY_NORMAL)

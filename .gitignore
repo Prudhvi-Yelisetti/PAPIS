@@ -34,6 +34,7 @@ frontend/.env.production
 
 # ── Tauri / Rust ──────────────────────────────────────────────────────────────
 src-tauri/target/
+src-tauri/gen/
 Cargo.lock
 
 # ── Alembic ───────────────────────────────────────────────────────────────────

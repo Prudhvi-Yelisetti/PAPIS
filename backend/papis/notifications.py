@@ -19,29 +19,12 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import Column, Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Session
 
-from ..database import Base, get_db
+from .database import get_db
+from .models import Notification
 
 router = APIRouter()
-
-
-# ── model ─────────────────────────────────────────────────────────────────────
-# Also add this class to backend/papis/models.py alongside Package, Project etc.
-# so Alembic detects it during --autogenerate.
-
-class Notification(Base):
-    __tablename__ = "notifications"
-
-    id         = Column(Integer,  primary_key=True, index=True)
-    title      = Column(String,   nullable=False)
-    body       = Column(Text,     nullable=True)
-    kind       = Column(String,   default="info")   # info | warning | error | success
-    package    = Column(String,   nullable=True)     # related package name
-    source     = Column(String,   nullable=True)     # related package source
-    is_read    = Column(Boolean,  default=False)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 # ── schemas ───────────────────────────────────────────────────────────────────

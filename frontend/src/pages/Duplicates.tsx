@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import {
   duplicatesApi, projectsApi, analyticsApi,
-  sourceColor, sourceLabel,
+  sourceColor,
   type CheckResult, type Project, type TimelineEvent,
 } from "../api";
 
@@ -21,7 +21,6 @@ export default function Duplicates() {
 
   useEffect(() => {
     projectsApi.list().then(setProjects);
-    // Pull duplicate_attempt events from the timeline
     analyticsApi.timeline(100).then(evs =>
       setHistory(evs.filter(e => e.event_type === "duplicate_attempt"))
     );
@@ -107,7 +106,6 @@ export default function Duplicates() {
             </button>
           </div>
 
-          {/* Result */}
           {result && (
             <div className={`check-result ${result.found ? "check-result--found" : "check-result--new"}`}>
               {result.found ? (
@@ -134,7 +132,6 @@ export default function Duplicates() {
 
                   <p className="check-result__suggestion">{result.suggestion}</p>
 
-                  {/* Projects currently using this package */}
                   {result.projects.length > 0 && (
                     <div className="check-result__projects">
                       <span className="muted" style={{ fontSize: 12 }}>Currently used by:</span>
@@ -144,7 +141,6 @@ export default function Duplicates() {
                     </div>
                   )}
 
-                  {/* Assign to another project */}
                   {unassignedProjects.length > 0 && (
                     <div className="check-result__assign">
                       <span className="muted" style={{ fontSize: 12 }}>
@@ -209,7 +205,9 @@ export default function Duplicates() {
                     </td>
                     <td className="mono">{ev.package}</td>
                     <td>
-                      <ActionBadge triggeredBy={ev.triggered_by ?? ""} />
+                      <span className="badge badge--yellow">
+                        via {(ev.triggered_by ?? "unknown").replace("shell_hook:", "")}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -219,17 +217,5 @@ export default function Duplicates() {
         </section>
       </div>
     </div>
-  );
-}
-
-
-function ActionBadge({ triggeredBy }: { triggeredBy: string }) {
-  // The resolved_action is stored in metadata_ on the backend.
-  // triggered_by contains "shell_hook:<source>" — we parse what we can from it.
-  const src = triggeredBy.replace("shell_hook:", "");
-  return (
-    <span className="badge badge--yellow">
-      via {src || "unknown"}
-    </span>
   );
 }
