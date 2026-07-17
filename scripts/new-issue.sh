@@ -17,7 +17,7 @@ DATE=$(date '+%Y-%m-%d')
 cat >> "$FILE" <<EOF
 
 ## $TITLE
-_Logged $DATE_
+_Logged ${DATE}_
 
 **Symptom:**
 <!-- What did you actually see? Exact error text if possible. -->
