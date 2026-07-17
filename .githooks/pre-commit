@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit
+#
+# Runs deterministic sanity checks on whatever is staged, BEFORE the commit
+# is created. No AI involved — same class of checks as the CI workflow,
+# just fast and local so bad commits never leave your machine.
+#
+# Installed via: scripts/install-hooks.sh
+# Skip once with: git commit --no-verify
+
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+VENV_PY="$ROOT/.venv/bin/python"
+FAILED=0
+
+echo "── pre-commit checks ──────────────────────────────────────"
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+
+# ── 1. Backend Python: import check ──────────────────────────────────────────
+if echo "$STAGED" | grep -qE '^(backend/papis|daemon)/.*\.py$'; then
+    echo -n "  backend imports ...... "
+    if [ -x "$VENV_PY" ]; then
+        if "$VENV_PY" -c "from papis.main import app" 2>/tmp/papis-precommit-backend.log \
+            && (cd "$ROOT" && PYTHONPATH="$ROOT/backend:$ROOT" "$VENV_PY" \
+                -c "from daemon.papis_daemon import main" 2>>/tmp/papis-precommit-backend.log)
+        then
+            echo "OK"
+        else
+            echo "FAILED"
+            cat /tmp/papis-precommit-backend.log
+            FAILED=1
+        fi
+    else
+        echo "SKIPPED (.venv not found)"
+    fi
+fi
+
+# ── 2. Frontend TypeScript: type-check only (fast, no full build) ────────────
+if echo "$STAGED" | grep -qE '^frontend/src/.*\.tsx?$'; then
+    echo -n "  frontend types ....... "
+    if [ -d "$ROOT/frontend/node_modules" ]; then
+        if (cd "$ROOT/frontend" && npx tsc --noEmit) >/tmp/papis-precommit-frontend.log 2>&1; then
+            echo "OK"
+        else
+            echo "FAILED"
+            cat /tmp/papis-precommit-frontend.log
+            FAILED=1
+        fi
+    else
+        echo "SKIPPED (node_modules not found)"
+    fi
+fi
+
+# ── 3. Rust: cargo check (only if src-tauri/src changed) ─────────────────────
+if echo "$STAGED" | grep -qE '^src-tauri/src/.*\.rs$'; then
+    echo -n "  rust compiles ........ "
+    if command -v cargo >/dev/null 2>&1; then
+        if (cd "$ROOT/src-tauri" && cargo check --quiet) >/tmp/papis-precommit-rust.log 2>&1; then
+            echo "OK"
+        else
+            echo "FAILED"
+            cat /tmp/papis-precommit-rust.log
+            FAILED=1
+        fi
+    else
+        echo "SKIPPED (cargo not found)"
+    fi
+fi
+
+echo "────────────────────────────────────────────────────────────"
+
+if [ "$FAILED" -ne 0 ]; then
+    echo "✗ pre-commit checks failed — commit aborted."
+    echo "  Fix the issue above, or bypass with: git commit --no-verify"
+    exit 1
+fi
+
+echo "✓ all checks passed"
+exit 0

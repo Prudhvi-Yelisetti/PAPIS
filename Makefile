@@ -1,0 +1,33 @@
+.PHONY: hooks checkpoint check test-backend test-frontend test-rust crash-wrap new-issue
+
+## Install git hooks (run once per clone)
+hooks:
+	@bash scripts/install-hooks.sh
+
+## Run all checks + commit + optionally push: make checkpoint ARGS="--push"
+checkpoint:
+	@bash scripts/checkpoint.sh $(ARGS)
+
+## Run the same checks as pre-commit, without committing
+check: test-backend test-frontend test-rust
+
+test-backend:
+	@echo "── backend imports ──"
+	@.venv/bin/python -c "from papis.main import app; print('OK —', len(app.routes), 'routes')"
+	@PYTHONPATH=backend:. .venv/bin/python -c "from daemon.papis_daemon import main; print('OK — daemon')"
+
+test-frontend:
+	@echo "── frontend types ──"
+	@cd frontend && npx tsc --noEmit && echo "OK"
+
+test-rust:
+	@echo "── rust check ──"
+	@cd src-tauri && cargo check --quiet && echo "OK"
+
+## Run the app wrapped in crash-log capture: make crash-wrap
+crash-wrap:
+	@bash scripts/run-with-crash-log.sh
+
+## Append a templated entry to TROUBLESHOOTING.md: make new-issue TITLE="..."
+new-issue:
+	@bash scripts/new-issue.sh "$(TITLE)"
