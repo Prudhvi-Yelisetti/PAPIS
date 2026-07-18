@@ -229,3 +229,44 @@ fuser ~/.local/share/papis/papis.db
 # Full session env vars needed to launch a GUI app from a non-session shell
 systemctl --user show-environment
 ```
+
+## papis-api hangs intermittently on the Alembic upgrade path (production mode)
+_Logged 2026-07-17_
+
+**Symptom:**
+`papis-api` (no `PAPIS_DEV` set, i.e. the production/Alembic path) hangs
+indefinitely at "Will assume non-transactional DDL." — never reaches
+"Application startup complete.", never binds the port. Confirmed NOT a
+SQLite lock (`fuser` shows nothing, plain `sqlite3` CLI queries the same
+file instantly). `PAPIS_DEV=1` (the `create_all()` path) starts correctly
+every time. A near-identical direct script
+(`python -c "from papis.database import init_db; init_db(dev_mode=False)"`)
+also completes in under a second — so the Alembic code itself is fine in
+isolation.
+
+**Root cause:**
+Not yet identified. Suspect `_cli.py`'s `uvicorn.main([...])` — a Click
+command invocation — interacting badly with the synchronous Alembic call
+inside the async `lifespan` context, possibly a signal-handling or
+thread-pool difference vs. plain `python -m uvicorn`. Not consistently
+reproducible — sometimes starts fine, sometimes hangs.
+
+**Fix:**
+Not yet fixed. Workaround: set `PAPIS_DEV=1` for now (uses `create_all()`,
+functionally equivalent once the schema is already at head — which it
+always is after the one-time `alembic stamp head` done earlier).
+
+**How to verify:**
+```bash
+# Reproduce (may need a few attempts, not 100% consistent):
+cd backend && papis-api
+
+# If it hangs past ~5s with no "Application startup complete.":
+for t in /proc/<PID>/task/*/; do
+  echo "$(cat $t/comm): $(cat $t/wchan)"
+done
+# main thread showing do_epoll_wait with no further log lines is the signature
+
+# Workaround:
+PAPIS_DEV=1 papis-api
+```

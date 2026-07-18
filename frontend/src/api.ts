@@ -188,9 +188,27 @@ export const duplicatesApi = {
 
 // ── Scan API ──────────────────────────────────────────────────────────────────
 
+export interface BulkScanLink {
+  project_id: number;
+  project_name: string;
+  package_id: number;
+  package_name: string;
+  manifest_type: string;
+}
+
+export interface BulkScanResult {
+  projects_scanned: number;
+  manifests_found: number;
+  new_links_count: number;
+  new_links: BulkScanLink[];
+  already_linked_count: number;
+  unmatched_deps: Record<string, string[]>;
+}
+
 export const scanApi = {
   scan: (directory: string, project_id?: number, auto_assign = false) =>
     post<ScanResult>("/api/scan/", { directory, project_id, auto_assign }),
+  scanAll: () => post<BulkScanResult>("/api/scan/bulk", {}),
 };
 
 
