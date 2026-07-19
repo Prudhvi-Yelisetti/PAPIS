@@ -79,6 +79,27 @@ jobs:
           print('OK — migrations applied with no fallback')
           "
 
+  scanner-tests:
+    name: Scanner test suite (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend + dev deps
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run pytest
+        working-directory: backend
+        run: python -m pytest -v
+
   frontend-build:
     name: Frontend builds with zero TypeScript errors
     runs-on: ubuntu-latest

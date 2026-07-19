@@ -39,7 +39,23 @@ if echo "$STAGED" | grep -qE '^(backend/papis|daemon)/.*\.py$'; then
     fi
 fi
 
-# ── 2. Frontend TypeScript: type-check only (fast, no full build) ────────────
+# ── 2. Scanner test suite (pytest) — only if scanner.py or tests/ changed ────
+if echo "$STAGED" | grep -qE '^backend/(papis/scanner\.py|tests/)'; then
+    echo -n "  scanner tests ........ "
+    if [ -x "$VENV_PY" ]; then
+        if (cd "$ROOT/backend" && "$VENV_PY" -m pytest -q) >/tmp/papis-precommit-scanner.log 2>&1; then
+            echo "OK"
+        else
+            echo "FAILED"
+            cat /tmp/papis-precommit-scanner.log
+            FAILED=1
+        fi
+    else
+        echo "SKIPPED (.venv not found)"
+    fi
+fi
+
+# ── 3. Frontend TypeScript: type-check only (fast, no full build) ────────────
 if echo "$STAGED" | grep -qE '^frontend/src/.*\.tsx?$'; then
     echo -n "  frontend types ....... "
     if [ -d "$ROOT/frontend/node_modules" ]; then
@@ -55,7 +71,7 @@ if echo "$STAGED" | grep -qE '^frontend/src/.*\.tsx?$'; then
     fi
 fi
 
-# ── 3. Rust: cargo check (only if src-tauri/src changed) ─────────────────────
+# ── 4. Rust: cargo check (only if src-tauri/src changed) ─────────────────────
 if echo "$STAGED" | grep -qE '^src-tauri/src/.*\.rs$'; then
     echo -n "  rust compiles ........ "
     if command -v cargo >/dev/null 2>&1; then

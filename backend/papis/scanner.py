@@ -174,16 +174,24 @@ def _parse_go_mod(path: Path) -> list[str]:
     deps = []
     for line in path.read_text().splitlines():
         line = line.strip()
-        if line.startswith("require ") or (line and not line.startswith("/")):
-            parts = line.split()
-            if len(parts) >= 2 and "/" in parts[0]:
-                deps.append(parts[0].split("/")[-1])
+        if not line or line.startswith("//") or line.startswith("module ") or line.startswith("go "):
+            continue
+        parts = line.split()
+        if line.startswith("require "):
+            # Single-line style: "require github.com/foo/bar v1.2.3"
+            # → module path is parts[1], not parts[0].
+            if len(parts) >= 2 and "/" in parts[1]:
+                deps.append(parts[1].split("/")[-1])
+        elif len(parts) >= 2 and "/" in parts[0]:
+            # Block style: bare "github.com/foo/bar v1.2.3" line inside
+            # a `require (...)` block — module path is parts[0].
+            deps.append(parts[0].split("/")[-1])
     return deps
 
 
 def _strip_version(dep: str) -> str:
     """'requests>=2.28.0' → 'requests'"""
-    return re.split(r"[>=<!;\[\s]", dep)[0].strip()
+    return re.split(r"[>=<!;\[\s]", dep.strip())[0].strip()
 
 
 def _normalize_name(name: str) -> str:

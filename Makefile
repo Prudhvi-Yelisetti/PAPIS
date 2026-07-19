@@ -1,4 +1,4 @@
-.PHONY: hooks checkpoint check test-backend test-frontend test-rust crash-wrap new-issue migrate
+.PHONY: hooks checkpoint check test-backend test-scanner test-frontend test-rust crash-wrap new-issue migrate
 
 ## Install git hooks (run once per clone)
 hooks:
@@ -9,12 +9,17 @@ checkpoint:
 	@bash scripts/checkpoint.sh $(ARGS)
 
 ## Run the same checks as pre-commit, without committing
-check: test-backend test-frontend test-rust
+check: test-backend test-scanner test-frontend test-rust
 
 test-backend:
 	@echo "── backend imports ──"
 	@.venv/bin/python -c "from papis.main import app; print('OK —', len(app.routes), 'routes')"
 	@PYTHONPATH=backend:. .venv/bin/python -c "from daemon.papis_daemon import main; print('OK — daemon')"
+
+## Run the scanner/bulk-scan test suite (pytest)
+test-scanner:
+	@echo "── scanner test suite ──"
+	@cd backend && $(CURDIR)/.venv/bin/python -m pytest -q
 
 test-frontend:
 	@echo "── frontend types ──"
@@ -35,4 +40,4 @@ new-issue:
 ## Apply pending Alembic migrations (startup no longer does this automatically)
 migrate:
 	@echo "── running alembic upgrade head ──"
-	@cd backend && ../.venv/bin/alembic upgrade head && echo "✓ database at head"
+	@cd backend && $(CURDIR)/.venv/bin/alembic upgrade head && echo "✓ database at head"
