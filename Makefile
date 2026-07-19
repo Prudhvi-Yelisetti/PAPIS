@@ -1,4 +1,4 @@
-.PHONY: hooks checkpoint check test-backend test-frontend test-rust crash-wrap new-issue
+.PHONY: hooks checkpoint check test-backend test-frontend test-rust crash-wrap new-issue migrate
 
 ## Install git hooks (run once per clone)
 hooks:
@@ -31,3 +31,8 @@ crash-wrap:
 ## Append a templated entry to TROUBLESHOOTING.md: make new-issue TITLE="..."
 new-issue:
 	@bash scripts/new-issue.sh "$(TITLE)"
+
+## Apply pending Alembic migrations (startup no longer does this automatically)
+migrate:
+	@echo "── running alembic upgrade head ──"
+	@cd backend && ../.venv/bin/alembic upgrade head && echo "✓ database at head"

@@ -73,7 +73,7 @@ npm run build:browser
 
 # 4. Start the server
 cd ../backend
-PAPIS_DEV=1 papis-api
+papis-api
 
 # 5. Open http://127.0.0.1:8765
 ```
@@ -94,8 +94,9 @@ sudo pacman -U src-tauri/target/release/bundle/deb/papis_*.deb
 ### Option C — Development mode (hot reload)
 
 ```bash
-# Terminal 1 — backend
-cd backend && PAPIS_DEV=1 papis-api --reload
+# Terminal 1 — backend (use uvicorn directly for --reload support;
+# papis-api itself doesn't forward extra flags)
+cd backend && python -m uvicorn papis.main:app --reload
 
 # Terminal 2 — frontend
 cd frontend && npm run dev
@@ -145,7 +146,6 @@ When you install a package that is already tracked, you get an interactive promp
 
 | Variable | Default | Description |
 |---|---|---|
-| `PAPIS_DEV` | `0` | `1` = use `create_all()` instead of Alembic |
 | `PAPIS_DB_PATH` | `~/.local/share/papis/papis.db` | SQLite database path |
 | `PAPIS_HOST` | `127.0.0.1` | API bind host |
 | `PAPIS_PORT` | `8765` | API bind port |
@@ -154,15 +154,28 @@ When you install a package that is already tracked, you get an interactive promp
 | `PAPIS_CONDA_BIN` | auto-detect | Force a specific conda binary |
 | `PAPIS_CONTAINER_RUNTIME` | auto-detect | Force `docker` or `podman` |
 
+Note: startup always uses `create_all()` (safe, idempotent, creates any
+missing tables). Real schema migrations are a separate explicit step —
+see below.
+
 ---
 
 ## Database migrations
 
+Startup does **not** run migrations automatically (see
+`TROUBLESHOOTING.md` for why). After pulling code that changes
+`models.py`, run this once:
+
+```bash
+make migrate
+# or directly:
+cd backend && alembic upgrade head
+```
+
+Other useful commands:
+
 ```bash
 cd backend
-
-# Apply all pending migrations
-alembic upgrade head
 
 # Create a new migration after changing models.py
 alembic revision --autogenerate -m "describe your change"
