@@ -230,43 +230,91 @@ fuser ~/.local/share/papis/papis.db
 systemctl --user show-environment
 ```
 
-## papis-api hangs intermittently on the Alembic upgrade path (production mode)
-_Logged 2026-07-17_
+## `papis-api` (production mode) hung on startup, tied to the full app specifically
+_Logged 2026-07-19_
 
 **Symptom:**
-`papis-api` (no `PAPIS_DEV` set, i.e. the production/Alembic path) hangs
-indefinitely at "Will assume non-transactional DDL." — never reaches
-"Application startup complete.", never binds the port. Confirmed NOT a
-SQLite lock (`fuser` shows nothing, plain `sqlite3` CLI queries the same
-file instantly). `PAPIS_DEV=1` (the `create_all()` path) starts correctly
-every time. A near-identical direct script
-(`python -c "from papis.database import init_db; init_db(dev_mode=False)"`)
-also completes in under a second — so the Alembic code itself is fine in
-isolation.
+`papis-api` hung indefinitely at "Will assume non-transactional DDL." —
+never reached "Application startup complete.", never bound the port.
+Confirmed NOT a SQLite lock (`fuser` clean, `sqlite3` CLI instant,
+`alembic_version` correctly at head, `PRAGMA integrity_check` OK).
+
+Extensive isolation testing (each combination run standalone):
+- Standalone `init_db(dev_mode=False)` script — always fast (~0.4s)
+- Bare FastAPI + lifespan + `init_db()` + `uvicorn.run()` — always worked
+- Full app minus `ws.py` entirely — worked
+- `ws.py`'s WebSocket route alone (no middleware) — worked
+- `ws.py`'s `PackageEventPublisher` middleware alone (no route) — worked
+- Both together, standalone — worked
+- The **actual full app** (every router + middleware + StaticFiles
+  together, exactly as `main.py` assembles it) — hung, but not 100%
+  consistently across different invocation methods (`papis-api` via
+  `uvicorn.main()`, via `uvicorn.run()`, via `python -m uvicorn` all
+  eventually reproduced it)
+
+No single component reproduced it in isolation — only the full app's
+combined complexity did, and inconsistently at that. This pointed to a
+genuine timing-sensitive interaction rather than a deterministic bug in
+any one file.
 
 **Root cause:**
-Not yet identified. Suspect `_cli.py`'s `uvicorn.main([...])` — a Click
-command invocation — interacting badly with the synchronous Alembic call
-inside the async `lifespan` context, possibly a signal-handling or
-thread-pool difference vs. plain `python -m uvicorn`. Not consistently
-reproducible — sometimes starts fine, sometimes hangs.
+Not fully root-caused at the code level (the flakiness makes true
+certainty hard), but conclusively isolated to **running Alembic's
+`command.upgrade()` automatically inside the async `lifespan` at every
+single startup**, specifically once the full app's complexity was
+assembled. Two things that did NOT fix it, ruling them out:
+- Moving the call to a worker thread via `asyncio.to_thread()`
+- Making `ws.py`'s `asyncio.Lock()` lazy instead of module-import-time
 
 **Fix:**
-Not yet fixed. Workaround: set `PAPIS_DEV=1` for now (uses `create_all()`,
-functionally equivalent once the schema is already at head — which it
-always is after the one-time `alembic stamp head` done earlier).
+Stopped running Alembic automatically at startup entirely. `lifespan` in
+`main.py` now always calls `init_db(dev_mode=True)` (`create_all()` —
+safe, idempotent, only creates missing tables, never touched existing
+data across dozens of test runs). Real schema migrations are now an
+explicit manual step instead:
+```bash
+cd backend && alembic upgrade head
+```
+Verified 6/6 consecutive successful startups after this change, versus
+0/8 in the several batches immediately before it.
 
 **How to verify:**
 ```bash
-# Reproduce (may need a few attempts, not 100% consistent):
-cd backend && papis-api
-
-# If it hangs past ~5s with no "Application startup complete.":
-for t in /proc/<PID>/task/*/; do
-  echo "$(cat $t/comm): $(cat $t/wchan)"
+cd backend
+for i in 1 2 3 4 5; do
+  timeout 5 papis-api > /tmp/attempt$i.log 2>&1
+  grep -q "Application startup complete" /tmp/attempt$i.log && echo PASS || echo FAIL
 done
-# main thread showing do_epoll_wait with no further log lines is the signature
-
-# Workaround:
-PAPIS_DEV=1 papis-api
+# All 5 should PASS
 ```
+
+---
+
+## Rebuilt the frontend but the running app still shows the old version
+
+**Symptom:** Added/changed a React component, `make check` passes, but
+the actual running AppImage (or dev server, if it was left running)
+doesn't show the change.
+
+The frontend gets compiled into `frontend/dist/` and then **embedded
+directly into the Tauri binary** at `tauri build` time — it is not loaded
+live from source. Editing `.tsx` files has zero effect on an
+already-built binary until you rebuild.
+
+**Fix:** Check whether `dist/` is actually newer than your source change
+before assuming the code itself is wrong:
+```bash
+stat -c '%Y %n' frontend/src/pages/YourFile.tsx
+stat -c '%Y %n' frontend/dist/assets/*.js
+# If dist/ timestamp is older, rebuild:
+cd frontend && npm run tauri:build
+```
+Also verify the new code actually made it into the bundle rather than
+assuming a successful build means the specific change is present:
+```bash
+grep -c "some unique string from your change" frontend/dist/assets/index-*.js
+```
+
+**How to verify:**
+Grep the built JS bundle for a unique string from the change, confirm
+it's present, *then* relaunch the app.

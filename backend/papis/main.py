@@ -1,3 +1,4 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -17,10 +18,20 @@ from .scanner               import scan_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # PAPIS_DEV=1 → fast create_all() path (no Alembic, good for development)
-    # PAPIS_DEV=0 or unset → run Alembic migrations (production default)
-    dev_mode = os.environ.get("PAPIS_DEV", "0").strip() in ("1", "true", "yes")
-    init_db(dev_mode=dev_mode)
+    # Startup always uses create_all() — safe and idempotent (only creates
+    # missing tables, never touches existing data or schema).
+    #
+    # Running the Alembic upgrade path automatically at every startup was
+    # found to hang unpredictably specifically with the FULL app assembled
+    # (all routers + middleware + StaticFiles together) — never reproduced
+    # in any isolated component test, not tied to any single router, not
+    # fixed by threading the call off the event loop. Given create_all()
+    # has been 100% reliable across extensive testing, real schema
+    # migrations are now an explicit manual step instead of an automatic
+    # startup one:
+    #     cd backend && alembic upgrade head
+    # Full investigation notes in TROUBLESHOOTING.md.
+    await asyncio.to_thread(init_db, dev_mode=True)
     yield
 
 

@@ -38,20 +38,32 @@ class EventBus:
     """
     Singleton pub/sub bus.  Each connected WebSocket client gets its own
     asyncio.Queue.  Publishing puts the event onto every active queue.
+
+    The lock is created LAZILY on first actual use inside a running event
+    loop, not in __init__. Creating asyncio.Lock() at module-import time
+    (before uvicorn's event loop exists) was found to cause the app to
+    hang indefinitely on startup — the lock silently binds to whatever
+    loop happens to be "current" at construction time, which doesn't
+    match the loop uvicorn actually runs the app on. See TROUBLESHOOTING.md.
     """
 
     def __init__(self):
         self._clients: set[asyncio.Queue] = set()
-        self._lock = asyncio.Lock()
+        self._lock: asyncio.Lock | None = None
+
+    def _get_lock(self) -> asyncio.Lock:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     async def subscribe(self) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(maxsize=256)
-        async with self._lock:
+        async with self._get_lock():
             self._clients.add(q)
         return q
 
     async def unsubscribe(self, q: asyncio.Queue):
-        async with self._lock:
+        async with self._get_lock():
             self._clients.discard(q)
 
     async def publish(self, event: dict):
@@ -59,7 +71,7 @@ class EventBus:
         if not self._clients:
             return
         payload = json.dumps(event)
-        async with self._lock:
+        async with self._get_lock():
             dead: list[asyncio.Queue] = []
             for q in self._clients:
                 try:

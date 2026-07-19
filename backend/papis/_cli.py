@@ -5,12 +5,15 @@ CLI entry points defined in pyproject.toml [project.scripts].
   papis-daemon  Start the background watcher daemon.
 
 Environment variables:
-  PAPIS_DEV=1          Use create_all() instead of Alembic (dev mode).
   PAPIS_HOST           API bind host   (default: 127.0.0.1)
   PAPIS_PORT           API bind port   (default: 8765)
   PAPIS_LOG_LEVEL      uvicorn log level (default: info)
   PAPIS_DB_PATH        Override SQLite database path.
   PAPIS_API            Daemon → API base URL (default: http://127.0.0.1:8765)
+
+Note: startup always uses create_all() now (safe, idempotent). Real schema
+migrations are an explicit manual step:  cd backend && alembic upgrade head
+See TROUBLESHOOTING.md for why automatic-migration-at-startup was removed.
 """
 from __future__ import annotations
 
@@ -23,34 +26,25 @@ def run_api():
     Entry point for `papis-api`.
     Starts uvicorn with the FastAPI app.
 
-    Examples
-    --------
-    # Normal use (production, Alembic migrations):
-    papis-api
-
-    # Development mode (create_all, hot-reload):
-    PAPIS_DEV=1 papis-api --reload
+    Execs into `python -m uvicorn papis.main:app ...` rather than calling
+    uvicorn.run() in-process, kept from an earlier debugging pass where it
+    was suspected (incorrectly, as it turned out) to matter. The actual
+    root cause of the startup hang investigated then was main.py running
+    Alembic automatically on every startup, which has since been removed
+    — see main.py's lifespan and TROUBLESHOOTING.md. Left as execvp since
+    it's proven reliable (6/6 in testing) and there's no reason to
+    reintroduce risk by changing it without a concrete need to.
     """
-    import uvicorn
-
-    dev_mode  = os.environ.get("PAPIS_DEV", "").strip() in ("1", "true", "yes")
     host      = os.environ.get("PAPIS_HOST",      "127.0.0.1")
-    port      = int(os.environ.get("PAPIS_PORT",  "8765"))
+    port      = os.environ.get("PAPIS_PORT",      "8765")
     log_level = os.environ.get("PAPIS_LOG_LEVEL", "info")
 
-    # Pass dev_mode into the app via an env var that main.py reads.
-    # We can't pass it directly to uvicorn's factory, so we set it here.
-    os.environ["PAPIS_DEV"] = "1" if dev_mode else "0"
-
-    # Forward any extra CLI args (e.g. --reload) to uvicorn
-    extra_args = sys.argv[1:]
-
-    uvicorn.main([
+    os.execvp(sys.executable, [
+        sys.executable, "-m", "uvicorn",
         "papis.main:app",
-        "--host",      host,
-        "--port",      str(port),
+        "--host", host,
+        "--port", port,
         "--log-level", log_level,
-        *extra_args,
     ])
 
 
