@@ -20,13 +20,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+
+from .._time import utcnow
 
 log = logging.getLogger("papis.ws")
 router = APIRouter()
@@ -120,7 +121,7 @@ async def websocket_events(ws: WebSocket):
     await ws.send_json({
         "type"       : "connected",
         "clients"    : event_bus.client_count,
-        "occurred_at": datetime.utcnow().isoformat(),
+        "occurred_at": utcnow().isoformat(),
     })
 
     # Start a ping task to keep the connection alive through proxies / Tauri
@@ -148,7 +149,7 @@ async def _ping_loop(ws: WebSocket):
     while True:
         await asyncio.sleep(15)
         try:
-            await ws.send_json({"type": "ping", "occurred_at": datetime.utcnow().isoformat()})
+            await ws.send_json({"type": "ping", "occurred_at": utcnow().isoformat()})
         except Exception:
             break
 
@@ -176,7 +177,7 @@ class PackageEventPublisher(BaseHTTPMiddleware):
                 body = await self._get_cached_body(request)
                 if body:
                     event = json.loads(body)
-                    event.setdefault("occurred_at", datetime.utcnow().isoformat())
+                    event.setdefault("occurred_at", utcnow().isoformat())
                     asyncio.create_task(event_bus.publish(event))
             except Exception as e:
                 log.debug("EventPublisher middleware error: %s", e)
@@ -212,7 +213,7 @@ async def publish_event(
         "type"       : event_type,
         "package"    : package,
         "source"     : source,
-        "occurred_at": datetime.utcnow().isoformat(),
+        "occurred_at": utcnow().isoformat(),
     }
     if version:
         payload["version"] = version

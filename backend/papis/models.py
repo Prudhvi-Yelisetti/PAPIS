@@ -24,6 +24,8 @@ from sqlalchemy.orm import (
     relationship,
 )
 
+from ._time import utcnow
+
 
 class Base(DeclarativeBase):
     pass
@@ -79,7 +81,7 @@ package_project = Table(
     Column(
         "assigned_at",
         DateTime,
-        default=datetime.utcnow,
+        default=utcnow,
     ),
 
     Column(
@@ -175,13 +177,13 @@ class Package(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utcnow,
     )
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
     )
 
     # Relationships
@@ -240,13 +242,13 @@ class Project(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utcnow,
     )
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
     )
 
     # Relationships
@@ -303,7 +305,7 @@ class InstallEvent(Base):
 
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utcnow,
         index=True,
     )
 
@@ -349,7 +351,7 @@ class ProjectScan(Base):
 
     scanned_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utcnow,
     )
 
     def __repr__(self) -> str:
@@ -365,4 +367,4 @@ class Notification(Base):
     package    = Column(String,   nullable=True)
     source     = Column(String,   nullable=True)
     is_read    = Column(Boolean,  default=False)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=utcnow, index=True)

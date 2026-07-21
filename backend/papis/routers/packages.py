@@ -8,6 +8,7 @@ from typing import Optional
 from ..database import get_db
 from ..models import Package, InstallEvent, InstallSource, InstallType
 from ..collectors.registry import collect_all
+from .._time import utcnow
 
 router = APIRouter()
 
@@ -76,7 +77,7 @@ def sync_packages(db: Session = Depends(get_db)):
             existing.version     = info.version
             existing.size_bytes  = info.size_bytes
             existing.description = info.description
-            existing.updated_at  = datetime.utcnow()
+            existing.updated_at  = utcnow()
             updated += 1
         else:
             db.add(Package(
@@ -111,7 +112,7 @@ async def handle_event(ev: EventIn, db: Session = Depends(get_db)):
                 package_id  = pkg.id,
                 event_type  = ev.type,
                 triggered_by= "daemon",
-                occurred_at = datetime.fromisoformat(ev.timestamp) if ev.timestamp else datetime.utcnow(),
+                occurred_at = datetime.fromisoformat(ev.timestamp) if ev.timestamp else utcnow(),
             ))
             await publish_event(
                 ev.type, name,

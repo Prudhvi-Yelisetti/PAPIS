@@ -4,6 +4,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Package, Project, InstallSource
+from .._time import utcnow
 
 router = APIRouter()
 
@@ -94,7 +95,7 @@ def export_snapshot(proj_id: int, db: Session = Depends(get_db)):
             }
             for p in proj.packages
         ],
-        "exported_at": __import__("datetime").datetime.utcnow().isoformat(),
+        "exported_at": utcnow().isoformat(),
     }
 
 

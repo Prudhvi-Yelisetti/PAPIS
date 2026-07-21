@@ -16,7 +16,6 @@ Duplicate install detection endpoints.
 """
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -25,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import InstallEvent, Package, Project
+from .._time import utcnow
 
 router = APIRouter()
 
@@ -189,7 +189,7 @@ def log_duplicate_attempt(
                 "resolved_action"  : body.resolved_action,
                 "target_project_id": body.target_project_id,
             }),
-            occurred_at  = datetime.utcnow(),
+            occurred_at  = utcnow(),
         ))
 
         if body.resolved_action == "reassigned" and body.target_project_id:
