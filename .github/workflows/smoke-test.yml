@@ -80,7 +80,7 @@ jobs:
           "
 
   scanner-tests:
-    name: Scanner test suite (pytest)
+    name: Pytest suite (scanner + collectors)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

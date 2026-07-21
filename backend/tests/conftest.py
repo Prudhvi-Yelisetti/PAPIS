@@ -129,3 +129,54 @@ def manifest_writers():
         "cargo": write_cargo_toml,
         "npm": write_package_json,
     }
+
+
+# ── Subprocess mocking helpers (for collector tests) ────────────────────────
+
+from dataclasses import dataclass as _dataclass
+
+
+@_dataclass
+class FakeCompletedProcess:
+    """Minimal stand-in for subprocess.CompletedProcess."""
+    stdout: str = ""
+    stderr: str = ""
+    returncode: int = 0
+
+
+def make_fake_run(responses: dict):
+    """
+    Build a fake subprocess.run() replacement.
+
+    `responses` maps a tuple of argv (or an argv PREFIX tuple, for commands
+    with variable trailing args like `pacman -Qi <name>`) to a
+    FakeCompletedProcess. Any command not matched returns a failed
+    (returncode=1, empty output) result rather than raising — this mirrors
+    how a missing/misbehaving external tool would look in production, and
+    keeps tests from silently passing due to an unmatched command falling
+    through to nothing.
+    """
+    def _fake_run(cmd, *args, **kwargs):
+        key = tuple(cmd)
+        if key in responses:
+            return responses[key]
+        for prefix, resp in responses.items():
+            if key[:len(prefix)] == prefix:
+                return resp
+        return FakeCompletedProcess(returncode=1)
+    return _fake_run
+
+
+@pytest.fixture()
+def fake_subprocess_run(monkeypatch):
+    """
+    Fixture returning a function you call with a responses dict to patch
+    subprocess.run for a specific collector module, e.g.:
+
+        fake_subprocess_run(papis.collectors.pacman, {
+            ("pacman", "-Qe", "--noconfirm"): FakeCompletedProcess(stdout="..."),
+        })
+    """
+    def _patch(module, responses: dict):
+        monkeypatch.setattr(module.subprocess, "run", make_fake_run(responses))
+    return _patch

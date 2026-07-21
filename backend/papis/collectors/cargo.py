@@ -291,11 +291,12 @@ class CargoCollector(BaseCollector):
             for child in directory.iterdir():
                 if not child.is_dir():
                     continue
+                if child.name in ("target", ".git", "node_modules", "__pycache__"):
+                    continue
                 lock = child / "Cargo.lock"
                 if lock.exists():
                     results.append(lock)
-                if child.name not in ("target", ".git", "node_modules", "__pycache__"):
-                    results.extend(self._find_lockfiles(child, depth + 1))
+                results.extend(self._find_lockfiles(child, depth + 1))
         except PermissionError:
             pass
         return results

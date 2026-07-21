@@ -39,15 +39,15 @@ if echo "$STAGED" | grep -qE '^(backend/papis|daemon)/.*\.py$'; then
     fi
 fi
 
-# ── 2. Scanner test suite (pytest) — only if scanner.py or tests/ changed ────
-if echo "$STAGED" | grep -qE '^backend/(papis/scanner\.py|tests/)'; then
-    echo -n "  scanner tests ........ "
+# ── 2. Pytest suite (scanner + collectors) — only if relevant files changed ──
+if echo "$STAGED" | grep -qE '^backend/(papis/scanner\.py|papis/collectors/|tests/)'; then
+    echo -n "  pytest suite ......... "
     if [ -x "$VENV_PY" ]; then
-        if (cd "$ROOT/backend" && "$VENV_PY" -m pytest -q) >/tmp/papis-precommit-scanner.log 2>&1; then
+        if (cd "$ROOT/backend" && "$VENV_PY" -m pytest -q) >/tmp/papis-precommit-pytest.log 2>&1; then
             echo "OK"
         else
             echo "FAILED"
-            cat /tmp/papis-precommit-scanner.log
+            cat /tmp/papis-precommit-pytest.log
             FAILED=1
         fi
     else
