@@ -15,6 +15,7 @@ from sqlalchemy import (
     Enum,
     Integer,
     Column,
+    UniqueConstraint,
 )
 
 from sqlalchemy.orm import (
@@ -197,6 +198,11 @@ class Package(Base):
         cascade="all, delete-orphan",
     )
 
+    locations: Mapped[list["PackageLocation"]] = relationship(
+        back_populates="package",
+        cascade="all, delete-orphan",
+    )
+
     def __repr__(self) -> str:
         return f"<Package {self.name}@{self.version} [{self.source}]>"
 
@@ -368,3 +374,63 @@ class Notification(Base):
     source     = Column(String,   nullable=True)
     is_read    = Column(Boolean,  default=False)
     created_at = Column(DateTime, default=utcnow, index=True)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Package Location
+# ──────────────────────────────────────────────────────────────────────────────
+
+class PackageLocation(Base):
+    """
+    Tracks where a package is actually used on disk when that location
+    isn't (yet) part of any registered project — an "orphan" file mapping
+    discovered by the full-disk scan. Lets the user see where a package
+    is used in practice even before promoting that location into a
+    tracked project, and distinguishes it from project associations
+    (package_project) which represent a deliberate user/scan decision
+    that a package belongs to a specific project.
+    """
+    __tablename__ = "package_locations"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        index=True,
+    )
+
+    package_id: Mapped[int] = mapped_column(
+        ForeignKey("packages.id", ondelete="CASCADE"),
+        index=True,
+    )
+
+    file_path: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+    )
+
+    directory: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        index=True,
+    )
+
+    manifest_type: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+    )
+
+    detected_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=utcnow,
+    )
+
+    # Relationships
+    package: Mapped["Package"] = relationship(
+        back_populates="locations",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("package_id", "file_path", name="uq_package_location"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<PackageLocation pkg={self.package_id} {self.file_path}>"

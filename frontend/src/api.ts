@@ -209,7 +209,38 @@ export const scanApi = {
   scan: (directory: string, project_id?: number, auto_assign = false) =>
     post<ScanResult>("/api/scan/", { directory, project_id, auto_assign }),
   scanAll: () => post<BulkScanResult>("/api/scan/bulk", {}),
+  scanFull: (roots?: string[]) =>
+    post<FullScanResult>("/api/scan/full", { roots: roots ?? null }),
 };
+
+export interface FullScanLink {
+  project_id: number;
+  project_name: string;
+  package_id: number;
+  package_name: string;
+  manifest_type: string;
+}
+
+export interface OrphanMapping {
+  package_id: number;
+  package_name: string;
+  file_path: string;
+  directory: string;
+  manifest_type: string;
+}
+
+export interface FullScanResult {
+  roots_scanned: string[];
+  manifests_found: number;
+  project_links_new_count: number;
+  project_links_new: FullScanLink[];
+  project_links_already: number;
+  orphan_mappings_new_count: number;
+  orphan_mappings_new: OrphanMapping[];
+  orphan_mappings_already: number;
+  dependency_graph_updates: number;
+  unmatched_deps: Record<string, string[]>;
+}
 
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

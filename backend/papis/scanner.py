@@ -12,7 +12,7 @@ from typing import Optional
 import tomllib           # stdlib in Python 3.11+; use tomli for older
 from sqlalchemy.orm import Session
 
-from .models import Package, Project, ProjectScan
+from .models import Package, Project, ProjectScan, PackageLocation, InstallSource
 
 
 MANIFEST_HANDLERS: dict[str, str] = {
@@ -420,4 +420,302 @@ def bulk_scan(db: Session = Depends(get_db)):
         ],
         "already_linked_count" : result.already_linked_count,
         "unmatched_deps"       : result.unmatched_deps,
+    }
+
+
+# ── Full-disk scan: entire filesystem, not just registered projects ──────────
+#
+# Distinct from bulk_scan_all_projects() above in one key way: this walks
+# a much broader root (default: the user's home directory) looking for
+# manifest files ANYWHERE, not just inside directories that are already
+# registered as projects.
+#
+#   - Manifest inside (or is) a registered project's directory
+#       -> identical behaviour to bulk_scan_all_projects: link the
+#          matching package to that project.
+#   - Manifest anywhere else
+#       -> record a PackageLocation "orphan" mapping instead of ignoring
+#          it. The package is known to be used at this file location on
+#          disk even though no project claims it (yet).
+#
+# Also separately walks for Cargo.lock files specifically (wherever they
+# sit) and uses their real RESOLVED dependency graph to update depends_on
+# on matching tracked cargo packages — Cargo.lock is the one manifest
+# format we already have genuine inter-package graph parsing for
+# (_parse_cargo_lock, from the cargo collector), as opposed to every other
+# manifest type which only gives a flat "these names are declared" list
+# with no actual edges between them.
+#
+# Efficiency: same approach as the project-only scan — packages and
+# existing orphan locations are each loaded into memory with a single
+# query, matching is O(1) dict lookups, and there is exactly one
+# db.commit() at the very end regardless of how much was found.
+
+FULL_SCAN_DEFAULT_MAX_DEPTH = 8
+
+
+@dataclass
+class OrphanMapping:
+    package_id: int
+    package_name: str
+    file_path: str
+    directory: str
+    manifest_type: str
+
+
+@dataclass
+class FullScanResult:
+    roots_scanned: list[str] = field(default_factory=list)
+    manifests_found: int = 0
+    project_links_new: list[ProjectMatch] = field(default_factory=list)
+    project_links_already: int = 0
+    orphan_mappings_new: list[OrphanMapping] = field(default_factory=list)
+    orphan_mappings_already: int = 0
+    dependency_graph_updates: int = 0
+    unmatched_deps: dict[str, list[str]] = field(default_factory=dict)   # dir -> dep names
+
+
+def _project_for_directory(directory: Path, projects: list[Project]) -> Optional[Project]:
+    """Return the registered project that owns `directory`, if any —
+    i.e. the project's directory equals it or is an ancestor of it."""
+    directory = directory.resolve()
+    for proj in projects:
+        if not proj.directory:
+            continue
+        proj_dir = Path(proj.directory).expanduser().resolve()
+        if directory == proj_dir or proj_dir in directory.parents:
+            return proj
+    return None
+
+
+def _find_cargo_lockfiles(root: Path, max_depth: int) -> list[Path]:
+    """Dedicated walk for Cargo.lock specifically — used only for
+    dependency-graph enrichment, kept separate from find_all_manifests
+    since Cargo.lock isn't a 'these are my direct deps' declaration file
+    the way the other recognized manifests are."""
+    found: list[Path] = []
+
+    def _walk(d: Path, depth: int):
+        if depth > max_depth:
+            return
+        try:
+            entries = list(d.iterdir())
+        except (PermissionError, OSError):
+            return
+        for child in entries:
+            if child.is_file():
+                if child.name == "Cargo.lock":
+                    found.append(child)
+            elif child.is_dir():
+                if child.name in SKIP_DIRS or child.name.startswith("."):
+                    continue
+                _walk(child, depth + 1)
+
+    _walk(root, 0)
+    return found
+
+
+def _merge_cargo_lock_graph(lock_path: Path, pkg_by_name: dict[str, list[Package]]) -> int:
+    """
+    Update depends_on for tracked cargo packages using this lockfile's
+    real resolved dependency graph. Merges with (never overwrites)
+    whatever depends_on data the cargo collector already gathered from
+    live system state. Returns how many packages were actually updated.
+    """
+    from .collectors.cargo import _parse_cargo_lock
+
+    entries = _parse_cargo_lock(lock_path)
+    updated = 0
+
+    for entry in entries:
+        norm = _normalize_name(entry.name)
+        candidates = pkg_by_name.get(norm)
+        if not candidates:
+            continue
+        match = next((c for c in candidates if c.source == InstallSource.cargo), None)
+        if not match:
+            continue
+
+        new_dep_names = sorted({
+            dep.split()[0] for dep in entry.dependencies if dep.strip()
+        })
+        if not new_dep_names:
+            continue
+
+        existing = set(json.loads(match.depends_on or "[]"))
+        merged = existing | set(new_dep_names)
+        if merged != existing:
+            match.depends_on = json.dumps(sorted(merged))
+            updated += 1
+
+    return updated
+
+
+def full_disk_scan(
+    db: Session,
+    roots: Optional[list[str]] = None,
+    max_depth: int = FULL_SCAN_DEFAULT_MAX_DEPTH,
+) -> FullScanResult:
+    if roots is None:
+        roots = [str(Path.home())]
+
+    projects = (
+        db.query(Project)
+        .filter(Project.is_archived == False)
+        .filter(Project.directory.isnot(None))
+        .filter(Project.directory != "")
+        .all()
+    )
+
+    all_packages = db.query(Package).all()
+    pkg_by_name: dict[str, list[Package]] = {}
+    for pkg in all_packages:
+        pkg_by_name.setdefault(_normalize_name(pkg.name), []).append(pkg)
+
+    result = FullScanResult()
+
+    already_linked: dict[int, set[int]] = {
+        proj.id: {p.id for p in proj.packages} for proj in projects
+    }
+    existing_locations: set[tuple[int, str]] = {
+        (loc.package_id, loc.file_path)
+        for loc in db.query(PackageLocation).all()
+    }
+    unmatched_sets: dict[str, set[str]] = {}
+
+    for root_str in roots:
+        root = Path(root_str).expanduser().resolve()
+        if not root.exists():
+            continue
+        result.roots_scanned.append(str(root))
+
+        manifests = find_all_manifests(root, max_depth=max_depth)
+        result.manifests_found += len(manifests)
+
+        for manifest_path in manifests:
+            mtype = MANIFEST_HANDLERS[manifest_path.name]
+            allowed_sources = MANIFEST_SOURCE_MAP.get(mtype, set())
+            directory = manifest_path.parent
+            dir_key = str(directory)
+
+            try:
+                dep_names = _extract_deps(manifest_path, mtype)
+            except Exception:
+                continue
+
+            owning_project = _project_for_directory(directory, projects)
+
+            for dep in dep_names:
+                norm = _normalize_name(dep)
+                candidates = pkg_by_name.get(norm)
+                if not candidates:
+                    unmatched_sets.setdefault(dir_key, set()).add(dep)
+                    continue
+
+                match = next(
+                    (c for c in candidates if c.source in allowed_sources),
+                    candidates[0],
+                )
+
+                if owning_project:
+                    linked_ids = already_linked.setdefault(owning_project.id, set())
+                    if match.id in linked_ids:
+                        result.project_links_already += 1
+                        continue
+                    owning_project.packages.append(match)
+                    match.in_inbox = False
+                    linked_ids.add(match.id)
+                    result.project_links_new.append(ProjectMatch(
+                        project_id    = owning_project.id,
+                        project_name  = owning_project.name,
+                        package_id    = match.id,
+                        package_name  = match.name,
+                        manifest_type = mtype,
+                    ))
+                else:
+                    key = (match.id, str(manifest_path))
+                    if key in existing_locations:
+                        result.orphan_mappings_already += 1
+                        continue
+                    db.add(PackageLocation(
+                        package_id    = match.id,
+                        file_path     = str(manifest_path),
+                        directory     = dir_key,
+                        manifest_type = mtype,
+                    ))
+                    existing_locations.add(key)
+                    result.orphan_mappings_new.append(OrphanMapping(
+                        package_id    = match.id,
+                        package_name  = match.name,
+                        file_path     = str(manifest_path),
+                        directory     = dir_key,
+                        manifest_type = mtype,
+                    ))
+
+        # Separate pass: Cargo.lock files anywhere under this root, for
+        # real dependency-graph enrichment.
+        for lock_path in _find_cargo_lockfiles(root, max_depth):
+            try:
+                result.dependency_graph_updates += _merge_cargo_lock_graph(lock_path, pkg_by_name)
+            except Exception:
+                continue
+
+    result.unmatched_deps = {k: sorted(v) for k, v in unmatched_sets.items()}
+
+    db.commit()
+    return result
+
+
+@scan_router.post("/full")
+def full_scan(
+    roots: Optional[list[str]] = Body(None, embed=True),
+    max_depth: int = Body(FULL_SCAN_DEFAULT_MAX_DEPTH, embed=True),
+    db: Session = Depends(get_db),
+):
+    """
+    Scan the user's entire home directory (or custom roots) for every
+    manifest file anywhere on disk — not just registered projects.
+    Packages found in a registered project's directory get linked to
+    that project, exactly like /api/scan/bulk. Packages found elsewhere
+    get recorded as "orphan" file locations instead of being silently
+    ignored, and any Cargo.lock found contributes real dependency-graph
+    data. Safe to call repeatedly — already-linked packages and
+    already-recorded locations are skipped, never duplicated.
+    """
+    result = full_disk_scan(db, roots=roots, max_depth=max_depth)
+
+    # Cap the detailed lists in the response for a whole-disk scan — the
+    # counts are always accurate, the itemised lists are capped so the
+    # response stays a reasonable size.
+    LIST_CAP = 200
+
+    return {
+        "roots_scanned"             : result.roots_scanned,
+        "manifests_found"           : result.manifests_found,
+        "project_links_new_count"   : len(result.project_links_new),
+        "project_links_new"        : [
+            {
+                "project_id"   : m.project_id,
+                "project_name" : m.project_name,
+                "package_id"   : m.package_id,
+                "package_name" : m.package_name,
+                "manifest_type": m.manifest_type,
+            }
+            for m in result.project_links_new[:LIST_CAP]
+        ],
+        "project_links_already"     : result.project_links_already,
+        "orphan_mappings_new_count" : len(result.orphan_mappings_new),
+        "orphan_mappings_new"      : [
+            {
+                "package_id"   : m.package_id,
+                "package_name" : m.package_name,
+                "file_path"    : m.file_path,
+                "directory"    : m.directory,
+                "manifest_type": m.manifest_type,
+            }
+            for m in result.orphan_mappings_new[:LIST_CAP]
+        ],
+        "orphan_mappings_already"   : result.orphan_mappings_already,
+        "dependency_graph_updates"  : result.dependency_graph_updates,
+        "unmatched_deps"            : result.unmatched_deps,
     }
